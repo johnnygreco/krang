@@ -9,21 +9,26 @@ Kraang is an MCP (Model Context Protocol) server that gives AI assistants persis
 
 ## Quick Start
 
-```bash
-uv pip install kraang
-```
-
-Add to your MCP client configuration (e.g. Claude Desktop):
+Add to your MCP client configuration (e.g. Claude Code, Claude Desktop):
 
 ```json
 {
   "mcpServers": {
     "kraang": {
-      "command": "kraang",
+      "command": "uvx",
+      "args": ["kraang"],
       "env": { "KRAANG_DB_PATH": "~/.kraang/brain.db" }
     }
   }
 }
+```
+
+Or install it explicitly:
+
+```bash
+uv pip install kraang
+# or
+pip install kraang
 ```
 
 If `KRAANG_DB_PATH` is not set, it defaults to `~/.kraang/brain.db`.
