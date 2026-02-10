@@ -186,6 +186,41 @@ async def delete_note(note_id: str) -> str:
 
 
 @mcp.tool()
+async def get_note(note_id: str) -> str:
+    """Retrieve the full content of a note by its ID.
+
+    Args:
+        note_id: ID of the note to retrieve.
+    """
+    try:
+        store = await _get_store()
+        note = await store.get(note_id)
+        if note is None:
+            return f"Note '{note_id}' not found."
+
+        tag_str = ", ".join(note.tags) if note.tags else "none"
+        lines = [
+            f"Title: {note.title}",
+            f"ID: {note.note_id}",
+            f"Status: {note.status.value}",
+            f"Category: {note.category or 'none'}",
+            f"Tags: {tag_str}",
+            f"Created: {note.created_at.isoformat()}",
+            f"Updated: {note.updated_at.isoformat()}",
+        ]
+        if note.metadata:
+            meta_parts = [f"  {k}: {v}" for k, v in note.metadata.items()]
+            lines.append("Metadata:")
+            lines.extend(meta_parts)
+        lines.append("---")
+        lines.append(note.content)
+        return "\n".join(lines)
+    except Exception:
+        logger.exception("get_note failed")
+        return f"Error: could not retrieve note '{note_id}'."
+
+
+@mcp.tool()
 async def list_tags() -> str:
     """List all tags currently used across all notes."""
     try:

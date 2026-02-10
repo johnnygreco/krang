@@ -71,19 +71,23 @@ class TestSearchNotes:
 
     async def test_search_with_tag_filter(self, populated_store):
         result = await server.search_notes("python", tags=["python"])
-        assert "Found" in result or "No notes" in result
+        assert "Found" in result
+        assert "python" in result.lower()
 
     async def test_search_with_category_filter(self, populated_store):
         result = await server.search_notes("guide", category="engineering")
-        assert isinstance(result, str)
+        assert "Found" in result or "No notes found" in result
 
     async def test_search_with_status_filter(self, populated_store):
         result = await server.search_notes("notes", status="active")
-        assert isinstance(result, str)
+        assert "Found" in result or "No notes found" in result
 
     async def test_search_with_limit(self, populated_store):
         result = await server.search_notes("notes", limit=2)
-        assert isinstance(result, str)
+        assert "Found" in result or "No notes found" in result
+        # Count the numbered results (lines starting with digit + period)
+        result_lines = [ln for ln in result.split("\n") if ln and ln[0].isdigit() and ". " in ln]
+        assert len(result_lines) <= 2
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +271,7 @@ class TestSuggestRelated:
         notes = await populated_store.list_all()
         note_id = notes[0].note_id
         result = await server.suggest_related(note_id, limit=2)
-        assert isinstance(result, str)
+        assert "Related to" in result or "No related notes" in result
 
 
 # ---------------------------------------------------------------------------
@@ -310,3 +314,109 @@ class TestGetNoteResource:
         result = await server.get_note_resource("some-id")
         assert "Error:" in result
         assert "could not retrieve note" in result
+
+
+# ---------------------------------------------------------------------------
+# get_note
+# ---------------------------------------------------------------------------
+
+
+class TestGetNote:
+    async def test_get_existing_note(self, store):
+        await server.add_note("Get Test", "Get content", tags=["t1"], category="cat")
+        notes = await store.list_all()
+        note_id = notes[0].note_id
+        result = await server.get_note(note_id)
+        assert "Title: Get Test" in result
+        assert "Get content" in result
+        assert f"ID: {note_id}" in result
+
+    async def test_get_nonexistent_note(self, store):
+        result = await server.get_note("nonexistent")
+        assert "not found" in result
+
+
+# ---------------------------------------------------------------------------
+# Error paths
+# ---------------------------------------------------------------------------
+
+
+class TestErrorPaths:
+    """Verify that all tool exception handlers return error strings (not raise)."""
+
+    async def test_add_note_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "create", _broken)
+        result = await server.add_note("Title", "Content")
+        assert "Error:" in result
+
+    async def test_search_notes_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "search", _broken)
+        result = await server.search_notes("query")
+        assert "Error:" in result
+
+    async def test_update_note_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "update", _broken)
+        result = await server.update_note("id", title="X")
+        assert "Error:" in result
+
+    async def test_delete_note_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "delete", _broken)
+        result = await server.delete_note("id")
+        assert "Error:" in result
+
+    async def test_get_note_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "get", _broken)
+        result = await server.get_note("id")
+        assert "Error:" in result
+
+    async def test_list_tags_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "list_tags", _broken)
+        result = await server.list_tags()
+        assert "Error:" in result
+
+    async def test_list_categories_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "list_categories", _broken)
+        result = await server.list_categories()
+        assert "Error:" in result
+
+    async def test_list_notes_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "list_all", _broken)
+        result = await server.list_notes()
+        assert "Error:" in result
+
+    async def test_get_stale_items_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "get_stale", _broken)
+        result = await server.get_stale_items()
+        assert "Error:" in result
+
+    async def test_daily_digest_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "get_daily_digest", _broken)
+        result = await server.daily_digest()
+        assert "Error:" in result
+
+    async def test_suggest_related_error(self, store, monkeypatch):
+        async def _broken(*a, **kw):
+            raise RuntimeError("db error")
+        monkeypatch.setattr(store, "get", _broken)
+        result = await server.suggest_related("id")
+        assert "Error:" in result

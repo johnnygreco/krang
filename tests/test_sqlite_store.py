@@ -332,12 +332,13 @@ class TestDailyDigest:
 class TestRelated:
     async def test_related_returns_results(self, populated_store):
         notes = await populated_store.list_all()
-        # Find the Python asyncio note
-        py_note = next(n for n in notes if "asyncio" in n.title.lower())
-        related = await populated_store.get_related(py_note.note_id)
+        # Use the FTS5 guide note — its title terms ("sqlite", "fts5") also
+        # appear in the "Project Krang architecture" content, giving a real match.
+        fts_note = next(n for n in notes if "FTS5" in n.title)
+        related = await populated_store.get_related(fts_note.note_id)
         assert len(related) > 0
         # Should not include self
-        assert all(r.note.note_id != py_note.note_id for r in related)
+        assert all(r.note.note_id != fts_note.note_id for r in related)
 
     async def test_related_nonexistent(self, store):
         related = await store.get_related("nonexistent")

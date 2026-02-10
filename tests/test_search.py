@@ -267,12 +267,14 @@ class TestFindRelated:
     async def test_suggest_related_by_id(self, populated_store) -> None:
         """suggest_related fetches the note by ID and finds related notes."""
         all_notes = await populated_store.list_all()
-        asyncio_note = next(n for n in all_notes if "asyncio" in n.title)
+        # Use the FTS5 guide note — its title terms ("sqlite", "fts5") also
+        # appear in the "Project Krang architecture" content, giving a real match.
+        fts_note = next(n for n in all_notes if "FTS5" in n.title)
 
-        related = await suggest_related(asyncio_note.note_id, populated_store, limit=5)
+        related = await suggest_related(fts_note.note_id, populated_store, limit=5)
         assert len(related) > 0
         related_ids = {r.note.note_id for r in related}
-        assert asyncio_note.note_id not in related_ids
+        assert fts_note.note_id not in related_ids
 
     async def test_suggest_related_not_found(self, populated_store) -> None:
         """suggest_related returns empty list for non-existent note_id."""

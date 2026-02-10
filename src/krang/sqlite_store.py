@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -73,45 +72,6 @@ CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
     VALUES (NEW.rowid, NEW.title, NEW.content);
 END;
 """
-
-# FTS5 special characters to strip from user queries.
-_FTS5_SPECIAL = re.compile(r'[^\w\s"]+', re.UNICODE)
-
-
-def _escape_fts(raw: str) -> str:
-    """Turn a raw search string into safe FTS5 MATCH syntax.
-
-    Individual words are wrapped in double quotes.  Existing quoted phrases
-    are preserved.
-    """
-    if not raw or not raw.strip():
-        return '""'
-
-    # Pull out quoted phrases.
-    phrases: list[str] = []
-
-    def _stash(m: re.Match[str]) -> str:
-        phrases.append(m.group(0))
-        return f"\x00{len(phrases) - 1}\x00"
-
-    text = re.sub(r'"[^"]*"', _stash, raw)
-    text = _FTS5_SPECIAL.sub(" ", text)
-
-    # Restore quoted phrases.
-    for idx, phrase in enumerate(phrases):
-        text = text.replace(f"\x00{idx}\x00", phrase)
-
-    tokens = text.split()
-    parts: list[str] = []
-    for tok in tokens:
-        if tok.startswith('"') and tok.endswith('"'):
-            parts.append(tok)
-        elif tok.upper() in ("AND", "OR", "NOT"):
-            parts.append(tok.upper())
-        else:
-            parts.append(f'"{tok}"')
-
-    return " ".join(parts) if parts else '""'
 
 
 def _dt_to_iso(dt: datetime) -> str:
@@ -207,6 +167,44 @@ class SQLiteNoteStore:
             tags=tags,
             metadata=meta,
         )
+
+    async def _get_tags_batch(self, note_ids: list[str]) -> dict[str, list[str]]:
+        """Fetch tags for multiple notes in a single query."""
+        if not note_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in note_ids)
+        cur = await self._conn.execute(
+            f"SELECT note_id, tag FROM note_tags WHERE note_id IN ({placeholders}) ORDER BY tag",
+            note_ids,
+        )
+        rows = await cur.fetchall()
+        result: dict[str, list[str]] = {nid: [] for nid in note_ids}
+        for r in rows:
+            result[r["note_id"]].append(r["tag"])
+        return result
+
+    async def _rows_to_notes(self, rows: list[aiosqlite.Row]) -> list[Note]:
+        """Convert multiple rows to Notes with a single batch tag fetch."""
+        if not rows:
+            return []
+        note_ids = [row["note_id"] for row in rows]
+        tags_map = await self._get_tags_batch(note_ids)
+        notes = []
+        for row in rows:
+            nid = row["note_id"]
+            meta = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
+            notes.append(Note(
+                note_id=nid,
+                title=row["title"],
+                content=row["content"],
+                category=row["category"],
+                status=NoteStatus(row["status"]),
+                created_at=_iso_to_dt(row["created_at"]),
+                updated_at=_iso_to_dt(row["updated_at"]),
+                tags=tags_map.get(nid, []),
+                metadata=meta,
+            ))
+        return notes
 
     # -- CRUD ----------------------------------------------------------------
 
@@ -304,12 +302,16 @@ class SQLiteNoteStore:
                 (limit, offset),
             )
         rows = await cur.fetchall()
-        return [await self._row_to_note(r) for r in rows]
+        return await self._rows_to_notes(rows)
 
     # -- search --------------------------------------------------------------
 
     async def search(self, query: SearchQuery) -> SearchResponse:
-        fts_expr = _escape_fts(query.query)
+        from krang.search import build_fts_query
+
+        fts_expr = build_fts_query(query.query)
+        if not fts_expr:
+            return SearchResponse(results=[], total=0, query=query.query)
 
         # Get matching rowids with BM25 scores from FTS.
         # bm25() weights: title (col 0) = 3.0, content (col 1) = 1.0
@@ -381,16 +383,14 @@ class SQLiteNoteStore:
         cur = await self._conn.execute(base_sql, params)
         rows = await cur.fetchall()
 
+        notes = await self._rows_to_notes(rows)
         results: list[SearchResult] = []
-        for row in rows:
-            note = await self._row_to_note(row)
-            results.append(
-                SearchResult(
-                    note=note,
-                    score=abs(row["score"]),  # bm25 returns negative values
-                    snippet=row["snip"] or "",
-                )
-            )
+        for note, row in zip(notes, rows, strict=True):
+            results.append(SearchResult(
+                note=note,
+                score=abs(row["score"]),
+                snippet=row["snip"] or "",
+            ))
 
         return SearchResponse(results=results, total=total, query=query.query)
 
@@ -420,9 +420,9 @@ class SQLiteNoteStore:
             (NoteStatus.ACTIVE.value, _dt_to_iso(cutoff)),
         )
         rows = await cur.fetchall()
+        notes = await self._rows_to_notes(rows)
         items: list[StaleItem] = []
-        for row in rows:
-            note = await self._row_to_note(row)
+        for note in notes:
             delta = now - note.updated_at
             items.append(StaleItem(note=note, days_since_update=delta.days))
         return items
@@ -442,7 +442,7 @@ class SQLiteNoteStore:
             (_dt_to_iso(yesterday), _dt_to_iso(yesterday)),
         )
         recent_rows = await cur.fetchall()
-        recent = [await self._row_to_note(r) for r in recent_rows]
+        recent = await self._rows_to_notes(recent_rows)
 
         # Category distribution
         cur = await self._conn.execute(
@@ -458,15 +458,21 @@ class SQLiteNoteStore:
         tag_rows = await cur.fetchall()
         tag_distribution = {r["tag"]: r["cnt"] for r in tag_rows}
 
-        # Stale count (reuse existing get_stale method)
-        stale_items = await self.get_stale(days=30)
+        # Stale count (direct query avoids loading full note objects)
+        cutoff = now - timedelta(days=30)
+        cur = await self._conn.execute(
+            "SELECT COUNT(*) AS cnt FROM notes WHERE status = ? AND updated_at < ?",
+            (NoteStatus.ACTIVE.value, _dt_to_iso(cutoff)),
+        )
+        stale_row = await cur.fetchone()
+        stale_count = stale_row["cnt"] if stale_row else 0
 
         return DailyDigest(
             total_notes=total,
             recent_notes=recent,
             category_distribution=category_distribution,
             tag_distribution=tag_distribution,
-            stale_count=len(stale_items),
+            stale_count=stale_count,
         )
 
     async def get_related(self, note_id: str, limit: int = 5) -> list[SearchResult]:
