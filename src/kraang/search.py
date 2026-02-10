@@ -327,9 +327,7 @@ def deduplicate_results(results: list[SearchResult]) -> list[SearchResult]:
 # ---------------------------------------------------------------------------
 
 
-async def find_related(
-    note: Note, store: NoteStore, limit: int = 5
-) -> list[SearchResult]:
+async def find_related(note: Note, store: NoteStore, limit: int = 5) -> list[SearchResult]:
     """Find notes related to *note* by title keywords and tags."""
     # Extract key terms from title.
     title_words = [
@@ -354,9 +352,7 @@ async def find_related(
     return results[:limit]
 
 
-async def suggest_related(
-    note_id: str, store: NoteStore, limit: int = 5
-) -> list[SearchResult]:
+async def suggest_related(note_id: str, store: NoteStore, limit: int = 5) -> list[SearchResult]:
     """Find notes related to the note identified by *note_id*.
 
     Convenience wrapper that fetches the note first, then delegates to

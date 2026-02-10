@@ -34,15 +34,11 @@ class TestAddNote:
         assert "ID:" in result
 
     async def test_creates_note_with_tags_and_category(self, store):
-        result = await server.add_note(
-            "Tagged", "Content", tags=["a", "b"], category="cat1"
-        )
+        result = await server.add_note("Tagged", "Content", tags=["a", "b"], category="cat1")
         assert "Created note 'Tagged'" in result
 
     async def test_creates_note_with_metadata(self, store):
-        result = await server.add_note(
-            "Meta", "Content", metadata={"key": "value"}
-        )
+        result = await server.add_note("Meta", "Content", metadata={"key": "value"})
         assert "Created note 'Meta'" in result
 
     async def test_note_persists_in_store(self, store):
@@ -347,6 +343,7 @@ class TestErrorPaths:
     async def test_add_note_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "create", _broken)
         result = await server.add_note("Title", "Content")
         assert "Error:" in result
@@ -354,6 +351,7 @@ class TestErrorPaths:
     async def test_search_notes_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "search", _broken)
         result = await server.search_notes("query")
         assert "Error:" in result
@@ -361,6 +359,7 @@ class TestErrorPaths:
     async def test_update_note_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "update", _broken)
         result = await server.update_note("id", title="X")
         assert "Error:" in result
@@ -368,6 +367,7 @@ class TestErrorPaths:
     async def test_delete_note_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "delete", _broken)
         result = await server.delete_note("id")
         assert "Error:" in result
@@ -375,6 +375,7 @@ class TestErrorPaths:
     async def test_get_note_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "get", _broken)
         result = await server.get_note("id")
         assert "Error:" in result
@@ -382,6 +383,7 @@ class TestErrorPaths:
     async def test_list_tags_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "list_tags", _broken)
         result = await server.list_tags()
         assert "Error:" in result
@@ -389,6 +391,7 @@ class TestErrorPaths:
     async def test_list_categories_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "list_categories", _broken)
         result = await server.list_categories()
         assert "Error:" in result
@@ -396,6 +399,7 @@ class TestErrorPaths:
     async def test_list_notes_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "list_all", _broken)
         result = await server.list_notes()
         assert "Error:" in result
@@ -403,6 +407,7 @@ class TestErrorPaths:
     async def test_get_stale_items_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "get_stale", _broken)
         result = await server.get_stale_items()
         assert "Error:" in result
@@ -410,6 +415,7 @@ class TestErrorPaths:
     async def test_daily_digest_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "get_daily_digest", _broken)
         result = await server.daily_digest()
         assert "Error:" in result
@@ -417,6 +423,7 @@ class TestErrorPaths:
     async def test_suggest_related_error(self, store, monkeypatch):
         async def _broken(*a, **kw):
             raise RuntimeError("db error")
+
         monkeypatch.setattr(store, "get", _broken)
         result = await server.suggest_related("id")
         assert "Error:" in result

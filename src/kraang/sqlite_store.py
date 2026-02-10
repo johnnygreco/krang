@@ -193,17 +193,19 @@ class SQLiteNoteStore:
         for row in rows:
             nid = row["note_id"]
             meta = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
-            notes.append(Note(
-                note_id=nid,
-                title=row["title"],
-                content=row["content"],
-                category=row["category"],
-                status=NoteStatus(row["status"]),
-                created_at=_iso_to_dt(row["created_at"]),
-                updated_at=_iso_to_dt(row["updated_at"]),
-                tags=tags_map.get(nid, []),
-                metadata=meta,
-            ))
+            notes.append(
+                Note(
+                    note_id=nid,
+                    title=row["title"],
+                    content=row["content"],
+                    category=row["category"],
+                    status=NoteStatus(row["status"]),
+                    created_at=_iso_to_dt(row["created_at"]),
+                    updated_at=_iso_to_dt(row["updated_at"]),
+                    tags=tags_map.get(nid, []),
+                    metadata=meta,
+                )
+            )
         return notes
 
     # -- CRUD ----------------------------------------------------------------
@@ -228,12 +230,10 @@ class SQLiteNoteStore:
         )
         await self._set_tags(note_id, note.tags)
         await self._conn.commit()
-        return (await self.get(note_id))  # type: ignore[return-value]
+        return await self.get(note_id)  # type: ignore[return-value]
 
     async def get(self, note_id: str) -> Note | None:
-        cur = await self._conn.execute(
-            "SELECT * FROM notes WHERE note_id = ?", (note_id,)
-        )
+        cur = await self._conn.execute("SELECT * FROM notes WHERE note_id = ?", (note_id,))
         row = await cur.fetchone()
         if row is None:
             return None
@@ -279,9 +279,7 @@ class SQLiteNoteStore:
         return await self.get(note_id)
 
     async def delete(self, note_id: str) -> bool:
-        cur = await self._conn.execute(
-            "DELETE FROM notes WHERE note_id = ?", (note_id,)
-        )
+        cur = await self._conn.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
         await self._conn.commit()
         return cur.rowcount > 0
 
@@ -386,20 +384,20 @@ class SQLiteNoteStore:
         notes = await self._rows_to_notes(rows)
         results: list[SearchResult] = []
         for note, row in zip(notes, rows, strict=True):
-            results.append(SearchResult(
-                note=note,
-                score=abs(row["score"]),
-                snippet=row["snip"] or "",
-            ))
+            results.append(
+                SearchResult(
+                    note=note,
+                    score=abs(row["score"]),
+                    snippet=row["snip"] or "",
+                )
+            )
 
         return SearchResponse(results=results, total=total, query=query.query)
 
     # -- taxonomy ------------------------------------------------------------
 
     async def list_tags(self) -> list[str]:
-        cur = await self._conn.execute(
-            "SELECT DISTINCT tag FROM note_tags ORDER BY tag"
-        )
+        cur = await self._conn.execute("SELECT DISTINCT tag FROM note_tags ORDER BY tag")
         rows = await cur.fetchall()
         return [r["tag"] for r in rows]
 

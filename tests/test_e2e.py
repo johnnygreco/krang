@@ -102,9 +102,7 @@ async def test_search_with_filters(populated_store):
         assert "python" in result.note.tags
 
     # Search with status filter
-    response = await store.search(
-        SearchQuery(query="notes", status=NoteStatus.ACTIVE)
-    )
+    response = await store.search(SearchQuery(query="notes", status=NoteStatus.ACTIVE))
     for result in response.results:
         assert result.note.status == NoteStatus.ACTIVE
 
@@ -136,9 +134,7 @@ async def test_unicode_content(store):
 async def test_very_long_content(store):
     """Create note with 100KB content, verify storage and retrieval."""
     long_content = "x" * 100_000
-    note = await store.create(
-        NoteCreate(title="Long note", content=long_content)
-    )
+    note = await store.create(NoteCreate(title="Long note", content=long_content))
     fetched = await store.get(note.note_id)
     assert fetched is not None
     assert len(fetched.content) == 100_000
@@ -189,6 +185,7 @@ async def test_duplicate_tags_handled(store):
 
 async def test_concurrent_operations(store):
     """Run multiple create/search operations concurrently via asyncio.gather."""
+
     async def create_note(i: int):
         return await store.create(
             NoteCreate(

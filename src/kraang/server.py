@@ -26,8 +26,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 mcp = FastMCP(
     "kraang",
     instructions=(
-        "A second brain for humans and their agents"
-        " — knowledge management with full-text search"
+        "A second brain for humans and their agents — knowledge management with full-text search"
     ),
 )
 
@@ -338,9 +337,7 @@ async def daily_digest() -> str:
             lines.append(f"Top categories: {', '.join(cat_parts)}")
 
         if digest.tag_distribution:
-            sorted_tags = sorted(
-                digest.tag_distribution.items(), key=lambda x: x[1], reverse=True
-            )
+            sorted_tags = sorted(digest.tag_distribution.items(), key=lambda x: x[1], reverse=True)
             tag_parts = [f"{tag} ({count})" for tag, count in sorted_tags[:5]]
             lines.append(f"Top tags: {', '.join(tag_parts)}")
 

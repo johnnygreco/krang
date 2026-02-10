@@ -82,8 +82,7 @@ SAMPLE_NOTES: list[NoteCreate] = [
     make_note(
         title="MCP protocol overview",
         content=(
-            "Model Context Protocol enables LLMs to interact"
-            " with external tools and data sources."
+            "Model Context Protocol enables LLMs to interact with external tools and data sources."
         ),
         tags=["mcp", "ai", "protocol"],
         category="engineering",
@@ -103,8 +102,7 @@ SAMPLE_NOTES: list[NoteCreate] = [
     make_note(
         title="Book: Thinking Fast and Slow",
         content=(
-            "System 1 is fast and intuitive. System 2 is slow"
-            " and deliberate. Cognitive biases."
+            "System 1 is fast and intuitive. System 2 is slow and deliberate. Cognitive biases."
         ),
         tags=["books", "psychology", "reading"],
         category="learning",
@@ -112,8 +110,7 @@ SAMPLE_NOTES: list[NoteCreate] = [
     make_note(
         title="Docker compose tips",
         content=(
-            "Use volumes for persistent data. Networks for"
-            " service communication. Health checks."
+            "Use volumes for persistent data. Networks for service communication. Health checks."
         ),
         tags=["docker", "devops", "infrastructure"],
         category="engineering",
@@ -142,8 +139,7 @@ SAMPLE_NOTES: list[NoteCreate] = [
     make_note(
         title="REST API design principles",
         content=(
-            "Use nouns for resources, HTTP verbs for actions."
-            " Pagination, filtering, versioning."
+            "Use nouns for resources, HTTP verbs for actions. Pagination, filtering, versioning."
         ),
         tags=["api", "rest", "design"],
         category="engineering",
@@ -151,8 +147,7 @@ SAMPLE_NOTES: list[NoteCreate] = [
     make_note(
         title="Investment portfolio review",
         content=(
-            "60% index funds, 20% bonds, 10% international,"
-            " 10% alternatives. Rebalance quarterly."
+            "60% index funds, 20% bonds, 10% international, 10% alternatives. Rebalance quarterly."
         ),
         tags=["finance", "investing"],
         category="finance",

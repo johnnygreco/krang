@@ -206,16 +206,12 @@ class TestSearch:
         assert resp.results == []
 
     async def test_tag_filter(self, populated_store):
-        resp = await populated_store.search(
-            SearchQuery(query="python", tags=["python"])
-        )
+        resp = await populated_store.search(SearchQuery(query="python", tags=["python"]))
         for r in resp.results:
             assert "python" in r.note.tags
 
     async def test_category_filter(self, populated_store):
-        resp = await populated_store.search(
-            SearchQuery(query="notes", category="engineering")
-        )
+        resp = await populated_store.search(SearchQuery(query="notes", category="engineering"))
         for r in resp.results:
             assert r.note.category == "engineering"
 
@@ -224,18 +220,14 @@ class TestSearch:
         n2 = await store.create(make_note(title="Searchable archived", content="findme"))
         await store.update(n2.note_id, NoteUpdate(status=NoteStatus.ARCHIVED))
 
-        resp = await store.search(
-            SearchQuery(query="findme", status=NoteStatus.ACTIVE)
-        )
+        resp = await store.search(SearchQuery(query="findme", status=NoteStatus.ACTIVE))
         assert resp.total == 1
         assert resp.results[0].note.status == NoteStatus.ACTIVE
 
     async def test_pagination(self, populated_store):
         resp_all = await populated_store.search(SearchQuery(query="notes", limit=100))
         if resp_all.total > 2:
-            resp_page = await populated_store.search(
-                SearchQuery(query="notes", limit=2, offset=0)
-            )
+            resp_page = await populated_store.search(SearchQuery(query="notes", limit=2, offset=0))
             assert len(resp_page.results) <= 2
 
     async def test_snippet_populated(self, populated_store):

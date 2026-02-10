@@ -7,7 +7,7 @@ test:
 	uv run pytest tests/ -v
 
 lint:
-	uv run ruff check src/ tests/
+	uv run ruff check src/ tests/ --fix
 	uv run mypy src/kraang/
 
 format:
