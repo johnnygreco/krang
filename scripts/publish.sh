@@ -36,3 +36,6 @@ uv build
 
 echo "Publishing to PyPI with twine..."
 uv run --with twine twine upload dist/*
+
+echo "Pushing tag $TAG..."
+git push origin "$TAG"
