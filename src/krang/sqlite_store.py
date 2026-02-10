@@ -301,7 +301,7 @@ class SQLiteNoteStore:
                 "SELECT * FROM notes ORDER BY updated_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             )
-        rows = await cur.fetchall()
+        rows = list(await cur.fetchall())
         return await self._rows_to_notes(rows)
 
     # -- search --------------------------------------------------------------
@@ -381,7 +381,7 @@ class SQLiteNoteStore:
 
         # Execute results query.
         cur = await self._conn.execute(base_sql, params)
-        rows = await cur.fetchall()
+        rows = list(await cur.fetchall())
 
         notes = await self._rows_to_notes(rows)
         results: list[SearchResult] = []
@@ -419,7 +419,7 @@ class SQLiteNoteStore:
             "SELECT * FROM notes WHERE status = ? AND updated_at < ? ORDER BY updated_at ASC",
             (NoteStatus.ACTIVE.value, _dt_to_iso(cutoff)),
         )
-        rows = await cur.fetchall()
+        rows = list(await cur.fetchall())
         notes = await self._rows_to_notes(rows)
         items: list[StaleItem] = []
         for note in notes:
@@ -434,14 +434,14 @@ class SQLiteNoteStore:
         # Total notes
         cur = await self._conn.execute("SELECT COUNT(*) AS cnt FROM notes")
         row = await cur.fetchone()
-        total = row["cnt"]
+        total = row["cnt"] if row else 0
 
         # Recent notes (updated or created in last 24h)
         cur = await self._conn.execute(
             "SELECT * FROM notes WHERE updated_at >= ? OR created_at >= ?",
             (_dt_to_iso(yesterday), _dt_to_iso(yesterday)),
         )
-        recent_rows = await cur.fetchall()
+        recent_rows = list(await cur.fetchall())
         recent = await self._rows_to_notes(recent_rows)
 
         # Category distribution

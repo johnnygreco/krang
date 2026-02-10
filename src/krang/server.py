@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from mcp.server.fastmcp import FastMCP
 
@@ -16,6 +16,9 @@ from krang.models import (
     NoteUpdate,
     SearchQuery,
 )
+
+if TYPE_CHECKING:
+    from krang.sqlite_store import SQLiteNoteStore
 
 logger = logging.getLogger("krang.server")
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
@@ -35,7 +38,7 @@ mcp = FastMCP(
 _store = None
 
 
-async def _get_store():
+async def _get_store() -> SQLiteNoteStore:
     """Return the initialised NoteStore singleton."""
     global _store
     if _store is None:
