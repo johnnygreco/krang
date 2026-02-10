@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -98,6 +99,7 @@ class SQLiteNoteStore:
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._db: aiosqlite.Connection | None = None
+        self._write_lock = asyncio.Lock()
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -213,23 +215,24 @@ class SQLiteNoteStore:
     async def create(self, note: NoteCreate) -> Note:
         note_id = new_id()
         now = utcnow()
-        await self._conn.execute(
-            """INSERT INTO notes (note_id, title, content, category, status,
-                                  created_at, updated_at, metadata_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                note_id,
-                note.title,
-                note.content,
-                note.category,
-                NoteStatus.ACTIVE.value,
-                _dt_to_iso(now),
-                _dt_to_iso(now),
-                json.dumps(note.metadata),
-            ),
-        )
-        await self._set_tags(note_id, note.tags)
-        await self._conn.commit()
+        async with self._write_lock:
+            await self._conn.execute(
+                """INSERT INTO notes (note_id, title, content, category, status,
+                                      created_at, updated_at, metadata_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    note_id,
+                    note.title,
+                    note.content,
+                    note.category,
+                    NoteStatus.ACTIVE.value,
+                    _dt_to_iso(now),
+                    _dt_to_iso(now),
+                    json.dumps(note.metadata),
+                ),
+            )
+            await self._set_tags(note_id, note.tags)
+            await self._conn.commit()
         return await self.get(note_id)  # type: ignore[return-value]
 
     async def get(self, note_id: str) -> Note | None:
@@ -268,19 +271,21 @@ class SQLiteNoteStore:
         params.append(_dt_to_iso(now))
         params.append(note_id)
 
-        if sets:
-            sql = f"UPDATE notes SET {', '.join(sets)} WHERE note_id = ?"
-            await self._conn.execute(sql, params)
+        async with self._write_lock:
+            if sets:
+                sql = f"UPDATE notes SET {', '.join(sets)} WHERE note_id = ?"
+                await self._conn.execute(sql, params)
 
-        if update.tags is not None:
-            await self._set_tags(note_id, update.tags)
+            if update.tags is not None:
+                await self._set_tags(note_id, update.tags)
 
-        await self._conn.commit()
+            await self._conn.commit()
         return await self.get(note_id)
 
     async def delete(self, note_id: str) -> bool:
-        cur = await self._conn.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
-        await self._conn.commit()
+        async with self._write_lock:
+            cur = await self._conn.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
+            await self._conn.commit()
         return cur.rowcount > 0
 
     async def list_all(
