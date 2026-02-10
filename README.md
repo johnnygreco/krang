@@ -1,6 +1,9 @@
-# Krang
-
-**A second brain for humans and their agents.**
+<table>
+  <tr>
+    <td><img src="assets/krang.jpeg" alt="Krang" width="350"></td>
+    <td><h1>Krang</h1><b>A second brain for you and your agents.</b></td>
+  </tr>
+</table>
 
 Krang is an MCP (Model Context Protocol) server that gives AI assistants persistent memory backed by SQLite with FTS5 full-text search. It stores, searches, and manages knowledge notes so your agent can recall what matters.
 
