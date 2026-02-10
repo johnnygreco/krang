@@ -50,9 +50,9 @@ async def _get_store():
 async def add_note(
     title: str,
     content: str,
-    tags: list[str] = [],  # noqa: B006
+    tags: list[str] | None = None,
     category: str = "",
-    metadata: dict[str, str] = {},  # noqa: B006
+    metadata: dict[str, str] | None = None,
 ) -> str:
     """Add a new note to the knowledge base.
 
@@ -64,6 +64,8 @@ async def add_note(
         metadata: Optional key-value metadata pairs.
     """
     try:
+        tags = tags if tags is not None else []
+        metadata = metadata if metadata is not None else {}
         store = await _get_store()
         note = await store.create(
             NoteCreate(
@@ -83,7 +85,7 @@ async def add_note(
 @mcp.tool()
 async def search_notes(
     query: str,
-    tags: list[str] = [],  # noqa: B006
+    tags: list[str] | None = None,
     category: str = "",
     status: str = "",
     limit: int = 20,
@@ -98,6 +100,7 @@ async def search_notes(
         limit: Maximum number of results to return (1-100, default 20).
     """
     try:
+        tags = tags if tags is not None else []
         store = await _get_store()
         sq = SearchQuery(
             query=query,
@@ -192,6 +195,46 @@ async def list_tags() -> str:
     except Exception:
         logger.exception("list_tags failed")
         return "Error: could not list tags."
+
+
+@mcp.tool()
+async def list_categories() -> str:
+    """List all categories currently used across all notes."""
+    try:
+        store = await _get_store()
+        categories = await store.list_categories()
+        if not categories:
+            return "No categories found."
+        return f"Categories: {', '.join(categories)}"
+    except Exception:
+        logger.exception("list_categories failed")
+        return "Error: could not list categories."
+
+
+@mcp.tool()
+async def list_notes(status: str = "", limit: int = 20, offset: int = 0) -> str:
+    """Browse notes in the knowledge base with optional status filter.
+
+    Args:
+        status: Filter by status ('active' or 'archived'). Empty for all.
+        limit: Maximum number of notes to return (default 20).
+        offset: Number of notes to skip for pagination (default 0).
+    """
+    try:
+        store = await _get_store()
+        s = NoteStatus(status) if status else None
+        notes = await store.list_all(status=s, limit=limit, offset=offset)
+        if not notes:
+            return "No notes found."
+        lines = [f"Showing {len(notes)} notes:\n"]
+        for i, note in enumerate(notes, offset + 1):
+            tag_str = ", ".join(note.tags) if note.tags else "none"
+            lines.append(f"{i}. {note.title} [{note.status.value}]")
+            lines.append(f"   ID: {note.note_id} | Tags: {tag_str}\n")
+        return "\n".join(lines)
+    except Exception:
+        logger.exception("list_notes failed")
+        return "Error: could not list notes."
 
 
 @mcp.tool()

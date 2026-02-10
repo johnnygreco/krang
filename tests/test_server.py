@@ -174,6 +174,42 @@ class TestListTags:
 
 
 # ---------------------------------------------------------------------------
+# list_categories
+# ---------------------------------------------------------------------------
+
+
+class TestListCategories:
+    async def test_list_categories_empty(self, store):
+        result = await server.list_categories()
+        assert "No categories found" in result
+
+    async def test_list_categories_populated(self, populated_store):
+        result = await server.list_categories()
+        assert "Categories:" in result
+        assert "engineering" in result
+
+
+# ---------------------------------------------------------------------------
+# list_notes
+# ---------------------------------------------------------------------------
+
+
+class TestListNotes:
+    async def test_list_notes_empty(self, store):
+        result = await server.list_notes()
+        assert "No notes found" in result
+
+    async def test_list_notes_populated(self, populated_store):
+        result = await server.list_notes()
+        assert "Showing" in result
+        assert "notes" in result
+
+    async def test_list_notes_with_status_filter(self, populated_store):
+        result = await server.list_notes(status="active")
+        assert "Showing" in result
+
+
+# ---------------------------------------------------------------------------
 # get_stale_items
 # ---------------------------------------------------------------------------
 

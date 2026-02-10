@@ -34,6 +34,8 @@ If `KRANG_DB_PATH` is not set, it defaults to `~/.krang/brain.db`.
 | `update_note` | Update an existing note | `note_id`, `title?`, `content?`, `tags?`, `category?`, `status?` |
 | `delete_note` | Delete a note | `note_id` |
 | `list_tags` | List all tags | *(none)* |
+| `list_categories` | List all categories | *(none)* |
+| `list_notes` | Browse/list notes | `status?`, `limit?`, `offset?` |
 | `get_stale_items` | Find notes not updated recently | `days?` |
 | `daily_digest` | Activity summary | *(none)* |
 | `suggest_related` | Find related notes | `note_id`, `limit?` |

@@ -9,11 +9,11 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
-def _utcnow() -> datetime:
+def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _new_id() -> str:
+def new_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
@@ -37,14 +37,14 @@ class NoteStatus(str, Enum):
 class Note(BaseModel):
     """A single knowledge note stored in the brain."""
 
-    note_id: str = Field(default_factory=_new_id)
+    note_id: str = Field(default_factory=new_id)
     title: str
     content: str
     tags: list[str] = Field(default_factory=list)
     category: str = ""
     status: NoteStatus = NoteStatus.ACTIVE
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     metadata: dict[str, str] = Field(default_factory=dict)
 
 

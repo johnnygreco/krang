@@ -19,8 +19,8 @@ from krang.models import (
     SearchResponse,
     SearchResult,
     StaleItem,
-    _new_id,
-    _utcnow,
+    new_id,
+    utcnow,
 )
 
 # ---------------------------------------------------------------------------
@@ -208,8 +208,8 @@ class SQLiteNoteStore:
     # -- CRUD ----------------------------------------------------------------
 
     async def create(self, note: NoteCreate) -> Note:
-        note_id = _new_id()
-        now = _utcnow()
+        note_id = new_id()
+        now = utcnow()
         await self._conn.execute(
             """INSERT INTO notes (note_id, title, content, category, status,
                                   created_at, updated_at, metadata_json)
@@ -262,7 +262,7 @@ class SQLiteNoteStore:
             sets.append("metadata_json = ?")
             params.append(json.dumps(update.metadata))
 
-        now = _utcnow()
+        now = utcnow()
         sets.append("updated_at = ?")
         params.append(_dt_to_iso(now))
         params.append(note_id)
@@ -280,9 +280,6 @@ class SQLiteNoteStore:
     async def delete(self, note_id: str) -> bool:
         cur = await self._conn.execute(
             "DELETE FROM notes WHERE note_id = ?", (note_id,)
-        )
-        await self._conn.execute(
-            "DELETE FROM note_tags WHERE note_id = ?", (note_id,)
         )
         await self._conn.commit()
         return cur.rowcount > 0
@@ -428,9 +425,46 @@ class SQLiteNoteStore:
         return items
 
     async def get_daily_digest(self) -> DailyDigest:
-        from krang.search import build_daily_digest
+        now = datetime.now(timezone.utc)
+        yesterday = now - timedelta(hours=24)
 
-        return await build_daily_digest(self)
+        # Total notes
+        cur = await self._conn.execute("SELECT COUNT(*) AS cnt FROM notes")
+        row = await cur.fetchone()
+        total = row["cnt"]
+
+        # Recent notes (updated or created in last 24h)
+        cur = await self._conn.execute(
+            "SELECT * FROM notes WHERE updated_at >= ? OR created_at >= ?",
+            (_dt_to_iso(yesterday), _dt_to_iso(yesterday)),
+        )
+        recent_rows = await cur.fetchall()
+        recent = [await self._row_to_note(r) for r in recent_rows]
+
+        # Category distribution
+        cur = await self._conn.execute(
+            "SELECT category, COUNT(*) AS cnt FROM notes WHERE category != '' GROUP BY category"
+        )
+        cat_rows = await cur.fetchall()
+        category_distribution = {r["category"]: r["cnt"] for r in cat_rows}
+
+        # Tag distribution (top 20)
+        cur = await self._conn.execute(
+            "SELECT tag, COUNT(*) AS cnt FROM note_tags GROUP BY tag ORDER BY cnt DESC LIMIT 20"
+        )
+        tag_rows = await cur.fetchall()
+        tag_distribution = {r["tag"]: r["cnt"] for r in tag_rows}
+
+        # Stale count (reuse existing get_stale method)
+        stale_items = await self.get_stale(days=30)
+
+        return DailyDigest(
+            total_notes=total,
+            recent_notes=recent,
+            category_distribution=category_distribution,
+            tag_distribution=tag_distribution,
+            stale_count=len(stale_items),
+        )
 
     async def get_related(self, note_id: str, limit: int = 5) -> list[SearchResult]:
         note = await self.get(note_id)

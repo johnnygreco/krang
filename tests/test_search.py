@@ -3,8 +3,6 @@ related notes, stale detection, digest."""
 
 from __future__ import annotations
 
-import pytest
-
 from krang.models import Note, NoteCreate, NoteStatus, NoteUpdate, SearchQuery, SearchResult
 from krang.search import (
     CONTENT_WEIGHT,
@@ -239,7 +237,6 @@ class TestDeduplicateResults:
 
 
 class TestFindRelated:
-    @pytest.mark.asyncio
     async def test_related_finds_similar_topics(self, populated_store) -> None:
         """The Python asyncio note should return some related results."""
         all_notes = await populated_store.list_all()
@@ -250,7 +247,6 @@ class TestFindRelated:
         # text similarity — not tag overlap.  Just verify we get results.
         assert isinstance(related, list)
 
-    @pytest.mark.asyncio
     async def test_related_excludes_self(self, populated_store) -> None:
         """The original note must never appear in its own related results."""
         all_notes = await populated_store.list_all()
@@ -260,7 +256,6 @@ class TestFindRelated:
         related_ids = {r.note.note_id for r in related}
         assert target.note_id not in related_ids
 
-    @pytest.mark.asyncio
     async def test_related_respects_limit(self, populated_store) -> None:
         """At most `limit` results are returned."""
         all_notes = await populated_store.list_all()
@@ -269,7 +264,6 @@ class TestFindRelated:
         related = await find_related(target, populated_store, limit=2)
         assert len(related) <= 2
 
-    @pytest.mark.asyncio
     async def test_suggest_related_by_id(self, populated_store) -> None:
         """suggest_related fetches the note by ID and finds related notes."""
         all_notes = await populated_store.list_all()
@@ -280,7 +274,6 @@ class TestFindRelated:
         related_ids = {r.note.note_id for r in related}
         assert asyncio_note.note_id not in related_ids
 
-    @pytest.mark.asyncio
     async def test_suggest_related_not_found(self, populated_store) -> None:
         """suggest_related returns empty list for non-existent note_id."""
         related = await suggest_related("nonexistent_id", populated_store)
@@ -293,7 +286,6 @@ class TestFindRelated:
 
 
 class TestSearchRanking:
-    @pytest.mark.asyncio
     async def test_title_match_ranks_higher_than_content(self, populated_store) -> None:
         """A note with the search term in its title should rank above one with
         the term only in content, assuming the store uses column weighting."""
@@ -306,7 +298,6 @@ class TestSearchRanking:
             # First result should be the one with FTS5 in the title.
             assert "FTS5" in response.results[0].note.title
 
-    @pytest.mark.asyncio
     async def test_tag_filtering_accuracy(self, populated_store) -> None:
         """Searching with a tag filter should return only notes with that tag."""
         query = SearchQuery(query='"python"', tags=["python"], limit=20)
@@ -321,7 +312,6 @@ class TestSearchRanking:
 
 
 class TestFindStaleNotes:
-    @pytest.mark.asyncio
     async def test_stale_finds_old_notes(self, store) -> None:
         """Notes with old updated_at dates should be detected as stale."""
         note = await store.create(
@@ -343,13 +333,11 @@ class TestFindStaleNotes:
         assert stale[0].note.note_id == note.note_id
         assert stale[0].days_since_update >= 0
 
-    @pytest.mark.asyncio
     async def test_stale_ignores_recent(self, populated_store) -> None:
         """Freshly created notes should not be stale."""
         stale = await find_stale_notes(populated_store, days=30)
         assert len(stale) == 0
 
-    @pytest.mark.asyncio
     async def test_stale_ignores_archived(self, store) -> None:
         """Archived notes should not appear in stale results."""
         note = await store.create(
@@ -367,7 +355,6 @@ class TestFindStaleNotes:
         stale_ids = {s.note.note_id for s in stale}
         assert note.note_id not in stale_ids
 
-    @pytest.mark.asyncio
     async def test_stale_sorted_most_stale_first(self, store) -> None:
         """Results are sorted with the most stale note first."""
         # Create two notes — both will be "stale" with days=-1.
@@ -384,7 +371,6 @@ class TestFindStaleNotes:
         days_values = [s.days_since_update for s in stale]
         assert days_values == sorted(days_values, reverse=True)
 
-    @pytest.mark.asyncio
     async def test_get_stale_items_alias(self, store) -> None:
         """get_stale_items is an alias for find_stale_notes."""
         await store.create(
@@ -401,13 +387,11 @@ class TestFindStaleNotes:
 
 
 class TestBuildDailyDigest:
-    @pytest.mark.asyncio
     async def test_digest_total_count(self, populated_store) -> None:
         """Total notes matches the number inserted."""
         digest = await build_daily_digest(populated_store)
         assert digest.total_notes == 15
 
-    @pytest.mark.asyncio
     async def test_digest_category_distribution(self, populated_store) -> None:
         """Engineering category should have the most notes."""
         digest = await build_daily_digest(populated_store)
@@ -418,39 +402,33 @@ class TestBuildDailyDigest:
         max_cat = max(digest.category_distribution, key=digest.category_distribution.get)
         assert max_cat == "engineering"
 
-    @pytest.mark.asyncio
     async def test_digest_recent_notes(self, populated_store) -> None:
         """All sample notes were just created so they should all be recent."""
         digest = await build_daily_digest(populated_store)
         assert len(digest.recent_notes) == 15
 
-    @pytest.mark.asyncio
     async def test_digest_tag_distribution(self, populated_store) -> None:
         """Tag distribution should contain expected tags."""
         digest = await build_daily_digest(populated_store)
         assert "python" in digest.tag_distribution
         assert "health" in digest.tag_distribution
 
-    @pytest.mark.asyncio
     async def test_digest_stale_count_zero_for_fresh(self, populated_store) -> None:
         """No notes should be stale when they were all just created."""
         digest = await build_daily_digest(populated_store)
         assert digest.stale_count == 0
 
-    @pytest.mark.asyncio
     async def test_digest_all_categories_present(self, populated_store) -> None:
         """All non-empty categories from the sample corpus should appear."""
         digest = await build_daily_digest(populated_store)
         expected = {"engineering", "personal", "wellness", "learning", "finance"}
         assert set(digest.category_distribution.keys()) == expected
 
-    @pytest.mark.asyncio
     async def test_digest_category_counts_sum_to_total(self, populated_store) -> None:
         """Category distribution counts should sum to total_notes."""
         digest = await build_daily_digest(populated_store)
         assert sum(digest.category_distribution.values()) == digest.total_notes
 
-    @pytest.mark.asyncio
     async def test_get_daily_digest_alias(self, populated_store) -> None:
         """get_daily_digest is an alias for build_daily_digest."""
         digest = await get_daily_digest(populated_store)
