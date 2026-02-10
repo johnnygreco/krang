@@ -180,14 +180,17 @@ class SQLiteNoteStore:
     async def _set_tags(self, note_id: str, tags: list[str]) -> None:
         await self._conn.execute("DELETE FROM note_tags WHERE note_id = ?", (note_id,))
         seen: set[str] = set()
+        unique_tags: list[str] = []
         for tag in tags:
             t = tag.strip()
             if t and t not in seen:
                 seen.add(t)
-                await self._conn.execute(
-                    "INSERT INTO note_tags (note_id, tag) VALUES (?, ?)",
-                    (note_id, t),
-                )
+                unique_tags.append(t)
+        if unique_tags:
+            await self._conn.executemany(
+                "INSERT INTO note_tags (note_id, tag) VALUES (?, ?)",
+                [(note_id, t) for t in unique_tags],
+            )
 
     async def _row_to_note(self, row: aiosqlite.Row) -> Note:
         note_id = row["note_id"]

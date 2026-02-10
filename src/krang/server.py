@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 
@@ -35,6 +36,7 @@ async def _get_store():
         from krang.sqlite_store import SQLiteNoteStore
 
         db_path = os.environ.get("KRANG_DB_PATH", str(Path.home() / ".krang" / "brain.db"))
+        db_path = str(Path(db_path).expanduser())
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         _store = SQLiteNoteStore(db_path)
         await _store.initialize()
@@ -87,7 +89,7 @@ async def search_notes(
     query: str,
     tags: list[str] | None = None,
     category: str = "",
-    status: str = "",
+    status: Literal["active", "archived", ""] = "",
     limit: int = 20,
 ) -> str:
     """Search notes by keyword, tags, category, or status.
@@ -119,7 +121,7 @@ async def search_notes(
             note = result.note
             tag_str = ", ".join(note.tags) if note.tags else "none"
             snippet = result.snippet or note.content[:120]
-            lines.append(f"{i}. {note.title} (score: {result.score:.2f})")
+            lines.append(f"{i}. {note.title} [ID: {note.note_id}] (score: {result.score:.2f})")
             lines.append(f"   {snippet}")
             lines.append(f"   Tags: {tag_str}\n")
         return "\n".join(lines)
@@ -135,7 +137,7 @@ async def update_note(
     content: str | None = None,
     tags: list[str] | None = None,
     category: str | None = None,
-    status: str | None = None,
+    status: Literal["active", "archived"] | None = None,
 ) -> str:
     """Update an existing note. Only provided fields will be changed.
 
@@ -212,7 +214,11 @@ async def list_categories() -> str:
 
 
 @mcp.tool()
-async def list_notes(status: str = "", limit: int = 20, offset: int = 0) -> str:
+async def list_notes(
+    status: Literal["active", "archived", ""] = "",
+    limit: int = 20,
+    offset: int = 0,
+) -> str:
     """Browse notes in the knowledge base with optional status filter.
 
     Args:
@@ -314,7 +320,8 @@ async def suggest_related(note_id: str, limit: int = 5) -> str:
 
         lines = [f"Related to '{note.title}':\n"]
         for i, result in enumerate(results, 1):
-            lines.append(f"{i}. {result.note.title} (score: {result.score:.2f})")
+            rid = result.note.note_id
+            lines.append(f"{i}. {result.note.title} [ID: {rid}] (score: {result.score:.2f})")
         return "\n".join(lines)
     except Exception:
         logger.exception("suggest_related failed")
@@ -329,29 +336,33 @@ async def suggest_related(note_id: str, limit: int = 5) -> str:
 @mcp.resource("note://{note_id}")
 async def get_note_resource(note_id: str) -> str:
     """Retrieve the full content of a note by its ID."""
-    store = await _get_store()
-    note = await store.get(note_id)
-    if note is None:
-        return f"Note '{note_id}' not found."
+    try:
+        store = await _get_store()
+        note = await store.get(note_id)
+        if note is None:
+            return f"Note '{note_id}' not found."
 
-    tag_str = ", ".join(note.tags) if note.tags else "none"
-    meta_str = ""
-    if note.metadata:
-        meta_parts = [f"  {k}: {v}" for k, v in note.metadata.items()]
-        meta_str = "\nMetadata:\n" + "\n".join(meta_parts)
+        tag_str = ", ".join(note.tags) if note.tags else "none"
+        meta_str = ""
+        if note.metadata:
+            meta_parts = [f"  {k}: {v}" for k, v in note.metadata.items()]
+            meta_str = "\nMetadata:\n" + "\n".join(meta_parts)
 
-    return (
-        f"Title: {note.title}\n"
-        f"ID: {note.note_id}\n"
-        f"Status: {note.status.value}\n"
-        f"Category: {note.category or 'none'}\n"
-        f"Tags: {tag_str}\n"
-        f"Created: {note.created_at.isoformat()}\n"
-        f"Updated: {note.updated_at.isoformat()}\n"
-        f"{meta_str}\n"
-        f"---\n"
-        f"{note.content}"
-    )
+        return (
+            f"Title: {note.title}\n"
+            f"ID: {note.note_id}\n"
+            f"Status: {note.status.value}\n"
+            f"Category: {note.category or 'none'}\n"
+            f"Tags: {tag_str}\n"
+            f"Created: {note.created_at.isoformat()}\n"
+            f"Updated: {note.updated_at.isoformat()}\n"
+            f"{meta_str}\n"
+            f"---\n"
+            f"{note.content}"
+        )
+    except Exception:
+        logger.exception("get_note_resource failed")
+        return f"Error: could not retrieve note '{note_id}'."
 
 
 # ---------------------------------------------------------------------------

@@ -63,6 +63,7 @@ class TestSearchNotes:
         result = await server.search_notes("asyncio")
         assert "Found" in result
         assert "asyncio" in result.lower()
+        assert "ID:" in result
 
     async def test_search_no_results(self, populated_store):
         result = await server.search_notes("zzzznonexistentzzzz")
@@ -300,3 +301,12 @@ class TestGetNoteResource:
         result = await server.get_note_resource(note_id)
         assert "Metadata:" in result
         assert "source: web" in result
+
+    async def test_resource_returns_error_on_store_failure(self, store, monkeypatch):
+        async def _broken_get(note_id):
+            raise RuntimeError("db exploded")
+
+        monkeypatch.setattr(store, "get", _broken_get)
+        result = await server.get_note_resource("some-id")
+        assert "Error:" in result
+        assert "could not retrieve note" in result

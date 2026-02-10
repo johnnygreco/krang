@@ -52,7 +52,7 @@ class NoteCreate(BaseModel):
     """Input schema for creating a new note."""
 
     title: str = Field(..., min_length=1, max_length=500)
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=200_000)
     tags: list[str] = Field(default_factory=list)
     category: str = ""
     metadata: dict[str, str] = Field(default_factory=dict)
@@ -62,7 +62,7 @@ class NoteUpdate(BaseModel):
     """Input schema for partially updating a note. Only provided fields are changed."""
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
-    content: str | None = Field(default=None, min_length=1)
+    content: str | None = Field(default=None, min_length=1, max_length=200_000)
     tags: list[str] | None = None
     category: str | None = None
     status: NoteStatus | None = None

@@ -39,6 +39,14 @@ class TestNoteCreate:
         with pytest.raises(ValidationError):
             NoteCreate(title="x" * 501, content="body")
 
+    def test_content_max_length_rejected(self):
+        with pytest.raises(ValidationError):
+            NoteCreate(title="X", content="x" * 200_001)
+
+    def test_content_at_max_length(self):
+        nc = NoteCreate(title="X", content="x" * 200_000)
+        assert len(nc.content) == 200_000
+
     def test_defaults(self):
         nc = NoteCreate(title="T", content="C")
         assert nc.tags == []
