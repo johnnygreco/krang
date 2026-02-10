@@ -22,7 +22,9 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 if git rev-parse "$TAG" &>/dev/null; then
-  echo "Error: Tag $TAG already exists. Choose a different version or delete the tag."
+  echo "Error: Tag $TAG already exists. Choose a different version or delete the tag:"
+  echo "  Local:  git tag -d $TAG"
+  echo "  Remote: git push origin --delete $TAG"
   exit 1
 fi
 
