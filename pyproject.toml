@@ -7,7 +7,7 @@ name = "krang"
 version = "0.1.0"
 description = "A second brain for humans and their agents — MCP server backed by SQLite FTS5."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [{ name = "Johnny Greco" }]
 keywords = ["mcp", "second-brain", "knowledge-management", "sqlite", "fts5"]
@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
     "mcp>=1.2.0,<2",

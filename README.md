@@ -78,4 +78,4 @@ Krang uses a layered architecture:
 
 ## License
 
-MIT
+Apache 2.0
