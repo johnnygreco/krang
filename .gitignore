@@ -8,6 +8,9 @@ dist/
 build/
 *.whl
 
+# Generated version file (hatch-vcs)
+src/krang/_version.py
+
 # Virtual environments
 .venv/
 venv/

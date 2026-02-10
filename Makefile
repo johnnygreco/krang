@@ -1,4 +1,4 @@
-.PHONY: install test lint format coverage clean
+.PHONY: install test lint format coverage clean publish
 
 install:
 	uv sync --extra dev
@@ -22,3 +22,6 @@ coverage:
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info .mypy_cache .pytest_cache .ruff_cache htmlcov .coverage
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+publish:
+	./scripts/publish.sh $(VERSION)

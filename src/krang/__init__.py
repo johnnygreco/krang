@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+try:
+    from krang._version import __version__
+except ImportError:
+    __version__ = "0.0.0"
 
 from krang.models import (
     DailyDigest,
