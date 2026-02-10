@@ -1,10 +1,10 @@
-"""Tests for krang.search — query processing, BM25 helpers,
+"""Tests for kraang.search — query processing, BM25 helpers,
 related notes, stale detection, digest."""
 
 from __future__ import annotations
 
-from krang.models import Note, NoteCreate, NoteStatus, NoteUpdate, SearchQuery, SearchResult
-from krang.search import (
+from kraang.models import Note, NoteCreate, NoteStatus, NoteUpdate, SearchQuery, SearchResult
+from kraang.search import (
     CONTENT_WEIGHT,
     HIGHLIGHT_CLOSE,
     HIGHLIGHT_OPEN,
@@ -259,7 +259,7 @@ class TestFindRelated:
         """suggest_related fetches the note by ID and finds related notes."""
         all_notes = await populated_store.list_all()
         # Use the FTS5 guide note — its title terms ("sqlite", "fts5") also
-        # appear in the "Project Krang architecture" content, giving a real match.
+        # appear in the "Project Kraang architecture" content, giving a real match.
         fts_note = next(n for n in all_notes if "FTS5" in n.title)
 
         related = await suggest_related(fts_note.note_id, populated_store, limit=5)

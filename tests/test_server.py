@@ -1,11 +1,11 @@
-"""Integration tests for the krang MCP server tools."""
+"""Integration tests for the kraang MCP server tools."""
 
 from __future__ import annotations
 
 import pytest
 
-import krang.server as server
-from krang.models import NoteStatus
+import kraang.server as server
+from kraang.models import NoteStatus
 
 # ---------------------------------------------------------------------------
 # Helpers

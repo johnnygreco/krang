@@ -8,7 +8,7 @@ from typing import Any
 
 import aiosqlite
 
-from krang.models import (
+from kraang.models import (
     DailyDigest,
     Note,
     NoteCreate,
@@ -307,7 +307,7 @@ class SQLiteNoteStore:
     # -- search --------------------------------------------------------------
 
     async def search(self, query: SearchQuery) -> SearchResponse:
-        from krang.search import build_fts_query
+        from kraang.search import build_fts_query
 
         fts_expr = build_fts_query(query.query)
         if not fts_expr:
@@ -479,7 +479,7 @@ class SQLiteNoteStore:
         note = await self.get(note_id)
         if note is None:
             return []
-        from krang.search import find_related
+        from kraang.search import find_related
 
         return await find_related(note, self, limit=limit)
 

@@ -1,4 +1,4 @@
-"""Search and intelligence functions for krang.
+"""Search and intelligence functions for kraang.
 
 Pure logic that works against the NoteStore protocol — no direct DB access.
 Provides query preprocessing, BM25 helpers, related-note discovery, stale
@@ -13,9 +13,9 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from krang.store import NoteStore
+    from kraang.store import NoteStore
 
-from krang.models import (
+from kraang.models import (
     DailyDigest,
     Note,
     NoteStatus,

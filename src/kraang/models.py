@@ -1,4 +1,4 @@
-"""Pydantic models for krang — the shared data contracts."""
+"""Pydantic models for kraang — the shared data contracts."""
 
 from __future__ import annotations
 

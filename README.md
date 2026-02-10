@@ -1,16 +1,16 @@
 <table>
   <tr>
-    <td><img src="assets/krang.jpeg" alt="Krang" width="350"></td>
-    <td><h1>Krang</h1><b>A second brain for you and your agents.</b></td>
+    <td><img src="assets/kraang.jpeg" alt="Kraang" width="350"></td>
+    <td><h1>Kraang</h1><b>A second brain for you and your agents.</b></td>
   </tr>
 </table>
 
-Krang is an MCP (Model Context Protocol) server that gives AI assistants persistent memory backed by SQLite with FTS5 full-text search. It stores, searches, and manages knowledge notes so your agent can recall what matters.
+Kraang is an MCP (Model Context Protocol) server that gives AI assistants persistent memory backed by SQLite with FTS5 full-text search. It stores, searches, and manages knowledge notes so your agent can recall what matters.
 
 ## Quick Start
 
 ```bash
-uv pip install krang
+uv pip install kraang
 ```
 
 Add to your MCP client configuration (e.g. Claude Desktop):
@@ -18,15 +18,15 @@ Add to your MCP client configuration (e.g. Claude Desktop):
 ```json
 {
   "mcpServers": {
-    "krang": {
-      "command": "krang",
-      "env": { "KRANG_DB_PATH": "~/.krang/brain.db" }
+    "kraang": {
+      "command": "kraang",
+      "env": { "KRAANG_DB_PATH": "~/.kraang/brain.db" }
     }
   }
 }
 ```
 
-If `KRANG_DB_PATH` is not set, it defaults to `~/.krang/brain.db`.
+If `KRAANG_DB_PATH` is not set, it defaults to `~/.kraang/brain.db`.
 
 ## Tool Reference
 
@@ -54,7 +54,7 @@ If `KRANG_DB_PATH` is not set, it defaults to `~/.krang/brain.db`.
 ## Development
 
 ```bash
-git clone https://github.com/johnnygreco/krang.git && cd krang
+git clone https://github.com/johnnygreco/kraang.git && cd kraang
 uv sync --extra dev
 make test
 make lint
@@ -69,7 +69,7 @@ make format     # auto-format with ruff
 
 ## Architecture
 
-Krang uses a layered architecture:
+Kraang uses a layered architecture:
 
 1. **Models** (`models.py`) -- Pydantic schemas define the data contracts: `Note`, `NoteCreate`, `NoteUpdate`, `SearchQuery`, etc.
 2. **Store Protocol** (`store.py`) -- An async `NoteStore` protocol that any storage backend must implement.

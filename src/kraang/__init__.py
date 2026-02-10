@@ -1,13 +1,13 @@
-"""Krang — a second brain for humans and their agents."""
+"""Kraang — a second brain for humans and their agents."""
 
 from __future__ import annotations
 
 try:
-    from krang._version import __version__
+    from kraang._version import __version__
 except ImportError:
     __version__ = "0.0.0"
 
-from krang.models import (
+from kraang.models import (
     DailyDigest,
     Note,
     NoteCreate,
@@ -18,7 +18,7 @@ from krang.models import (
     SearchResult,
     StaleItem,
 )
-from krang.store import NoteStore
+from kraang.store import NoteStore
 
 __all__ = [
     "DailyDigest",

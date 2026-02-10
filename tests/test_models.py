@@ -1,11 +1,11 @@
-"""Unit tests for krang Pydantic models."""
+"""Unit tests for kraang Pydantic models."""
 
 from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
 
-from krang.models import (
+from kraang.models import (
     Note,
     NoteCreate,
     NoteStatus,

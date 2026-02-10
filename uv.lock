@@ -441,7 +441,7 @@ wheels = [
 ]
 
 [[package]]
-name = "krang"
+name = "kraang"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },

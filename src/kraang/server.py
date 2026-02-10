@@ -1,4 +1,4 @@
-"""MCP server for krang — exposes note tools and resources over stdio."""
+"""MCP server for kraang — exposes note tools and resources over stdio."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 
 from mcp.server.fastmcp import FastMCP
 
-from krang.models import (
+from kraang.models import (
     NoteCreate,
     NoteStatus,
     NoteUpdate,
@@ -18,13 +18,13 @@ from krang.models import (
 )
 
 if TYPE_CHECKING:
-    from krang.sqlite_store import SQLiteNoteStore
+    from kraang.sqlite_store import SQLiteNoteStore
 
-logger = logging.getLogger("krang.server")
+logger = logging.getLogger("kraang.server")
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
 mcp = FastMCP(
-    "krang",
+    "kraang",
     instructions=(
         "A second brain for humans and their agents"
         " — knowledge management with full-text search"
@@ -42,9 +42,9 @@ async def _get_store() -> SQLiteNoteStore:
     """Return the initialised NoteStore singleton."""
     global _store
     if _store is None:
-        from krang.sqlite_store import SQLiteNoteStore
+        from kraang.sqlite_store import SQLiteNoteStore
 
-        db_path = os.environ.get("KRANG_DB_PATH", str(Path.home() / ".krang" / "brain.db"))
+        db_path = os.environ.get("KRAANG_DB_PATH", str(Path.home() / ".kraang" / "brain.db"))
         db_path = str(Path(db_path).expanduser())
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         _store = SQLiteNoteStore(db_path)
@@ -461,7 +461,7 @@ async def get_note_resource(note_id: str) -> str:
 
 
 def main() -> None:
-    """Run the krang MCP server over stdio."""
+    """Run the kraang MCP server over stdio."""
     mcp.run(transport="stdio")
 
 

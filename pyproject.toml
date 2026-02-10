@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "krang"
+name = "kraang"
 dynamic = ["version"]
 description = "A second brain for humans and their agents — MCP server backed by SQLite FTS5."
 readme = "README.md"
@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.scripts]
-krang = "krang.server:main"
+kraang = "kraang.server:main"
 
 [project.optional-dependencies]
 dev = [
@@ -42,10 +42,10 @@ source = "vcs"
 fallback-version = "0.0.0"
 
 [tool.hatch.build.hooks.vcs]
-version-file = "src/krang/_version.py"
+version-file = "src/kraang/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/krang"]
+packages = ["src/kraang"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

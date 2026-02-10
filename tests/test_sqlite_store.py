@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from krang.models import (
+from kraang.models import (
     NoteStatus,
     NoteUpdate,
     SearchQuery,
 )
-from krang.sqlite_store import SQLiteNoteStore
+from kraang.sqlite_store import SQLiteNoteStore
 from tests.conftest import make_note
 
 # ---------------------------------------------------------------------------
@@ -333,7 +333,7 @@ class TestRelated:
     async def test_related_returns_results(self, populated_store):
         notes = await populated_store.list_all()
         # Use the FTS5 guide note — its title terms ("sqlite", "fts5") also
-        # appear in the "Project Krang architecture" content, giving a real match.
+        # appear in the "Project Kraang architecture" content, giving a real match.
         fts_note = next(n for n in notes if "FTS5" in n.title)
         related = await populated_store.get_related(fts_note.note_id)
         assert len(related) > 0

@@ -1,4 +1,4 @@
-"""Shared fixtures and factories for krang tests."""
+"""Shared fixtures and factories for kraang tests."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from krang.models import NoteCreate
+from kraang.models import NoteCreate
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -22,7 +22,7 @@ def tmp_db_path(tmp_path: Path) -> Path:
 @pytest.fixture()
 async def store(tmp_db_path: Path):
     """Yield an initialized SQLiteNoteStore backed by a temp database."""
-    from krang.sqlite_store import SQLiteNoteStore
+    from kraang.sqlite_store import SQLiteNoteStore
 
     s = SQLiteNoteStore(str(tmp_db_path))
     await s.initialize()
@@ -47,7 +47,7 @@ def make_note(**overrides) -> NoteCreate:
     """Build a NoteCreate with sensible defaults, overridden by kwargs."""
     defaults = {
         "title": "Test Note",
-        "content": "This is test content for a krang note.",
+        "content": "This is test content for a kraang note.",
         "tags": ["test"],
         "category": "general",
         "metadata": {},
@@ -95,9 +95,9 @@ SAMPLE_NOTES: list[NoteCreate] = [
         category="wellness",
     ),
     make_note(
-        title="Project Krang architecture",
+        title="Project Kraang architecture",
         content="Second brain MCP server with SQLite FTS5 backend. Pydantic models for contracts.",
-        tags=["krang", "architecture", "mcp"],
+        tags=["kraang", "architecture", "mcp"],
         category="engineering",
     ),
     make_note(

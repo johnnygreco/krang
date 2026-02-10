@@ -1,10 +1,10 @@
-"""End-to-end tests for krang — full stack: store → SQLite → response."""
+"""End-to-end tests for kraang — full stack: store → SQLite → response."""
 
 from __future__ import annotations
 
 import asyncio
 
-from krang.models import (
+from kraang.models import (
     NoteCreate,
     NoteStatus,
     NoteUpdate,
