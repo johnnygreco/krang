@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -62,12 +61,12 @@ class NoteCreate(BaseModel):
 class NoteUpdate(BaseModel):
     """Input schema for partially updating a note. Only provided fields are changed."""
 
-    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
-    content: Optional[str] = Field(default=None, min_length=1)
-    tags: Optional[list[str]] = None
-    category: Optional[str] = None
-    status: Optional[NoteStatus] = None
-    metadata: Optional[dict[str, str]] = None
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    content: str | None = Field(default=None, min_length=1)
+    tags: list[str] | None = None
+    category: str | None = None
+    status: NoteStatus | None = None
+    metadata: dict[str, str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -80,10 +79,10 @@ class SearchQuery(BaseModel):
 
     query: str = Field(..., min_length=1)
     tags: list[str] = Field(default_factory=list)
-    category: Optional[str] = None
-    status: Optional[NoteStatus] = None
-    date_from: Optional[datetime] = None
-    date_to: Optional[datetime] = None
+    category: str | None = None
+    status: NoteStatus | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
 

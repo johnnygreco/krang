@@ -1,23 +1,23 @@
 .PHONY: install test lint format coverage clean
 
 install:
-	pip install -e ".[dev]"
+	uv sync --extra dev
 
 test:
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 lint:
-	ruff check src/ tests/
-	mypy src/krang/
+	uv run ruff check src/ tests/
+	uv run mypy src/krang/
 
 format:
-	ruff format src/ tests/
-	ruff check --fix src/ tests/
+	uv run ruff format src/ tests/
+	uv run ruff check --fix src/ tests/
 
 coverage:
-	coverage run -m pytest tests/ -v
-	coverage report -m
-	coverage html
+	uv run coverage run -m pytest tests/ -v
+	uv run coverage report -m
+	uv run coverage html
 
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info .mypy_cache .pytest_cache .ruff_cache htmlcov .coverage
