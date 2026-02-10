@@ -9,7 +9,6 @@ from krang.search import (
     HIGHLIGHT_CLOSE,
     HIGHLIGHT_OPEN,
     STOP_WORDS,
-    TAG_WEIGHT,
     TITLE_WEIGHT,
     bm25_weights,
     build_daily_digest,
@@ -18,9 +17,6 @@ from krang.search import (
     find_related,
     find_stale_notes,
     generate_snippet,
-    get_daily_digest,
-    get_stale_items,
-    parse_search_query,
     sanitize_fts_query,
     suggest_related,
 )
@@ -115,10 +111,6 @@ class TestBuildFtsQuery:
         """Empty input produces empty output."""
         assert build_fts_query("") == ""
 
-    def test_parse_search_query_alias(self) -> None:
-        """parse_search_query is an alias for build_fts_query."""
-        assert parse_search_query("hello world") == build_fts_query("hello world")
-
 
 # ---------------------------------------------------------------------------
 # BM25 helpers
@@ -127,17 +119,16 @@ class TestBuildFtsQuery:
 
 class TestBM25Helpers:
     def test_bm25_weights_values(self) -> None:
-        """Title weight > tag weight > content weight."""
-        tw, tagw, cw = bm25_weights()
+        """Title weight > content weight."""
+        tw, cw = bm25_weights()
         assert tw == TITLE_WEIGHT == 3.0
-        assert tagw == TAG_WEIGHT == 2.0
         assert cw == CONTENT_WEIGHT == 1.0
-        assert tw > tagw > cw
+        assert tw > cw
 
     def test_bm25_weights_tuple(self) -> None:
-        """Returns a 3-tuple."""
+        """Returns a 2-tuple."""
         weights = bm25_weights()
-        assert len(weights) == 3
+        assert len(weights) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -373,15 +364,6 @@ class TestFindStaleNotes:
         days_values = [s.days_since_update for s in stale]
         assert days_values == sorted(days_values, reverse=True)
 
-    async def test_get_stale_items_alias(self, store) -> None:
-        """get_stale_items is an alias for find_stale_notes."""
-        await store.create(
-            NoteCreate(title="Alias test", content="Content", tags=[], category="test")
-        )
-        result_a = await find_stale_notes(store, days=-1)
-        result_b = await get_stale_items(store, days=-1)
-        assert len(result_a) == len(result_b)
-
 
 # ---------------------------------------------------------------------------
 # Daily digest
@@ -430,11 +412,6 @@ class TestBuildDailyDigest:
         """Category distribution counts should sum to total_notes."""
         digest = await build_daily_digest(populated_store)
         assert sum(digest.category_distribution.values()) == digest.total_notes
-
-    async def test_get_daily_digest_alias(self, populated_store) -> None:
-        """get_daily_digest is an alias for build_daily_digest."""
-        digest = await get_daily_digest(populated_store)
-        assert digest.total_notes == 15
 
 
 # ---------------------------------------------------------------------------

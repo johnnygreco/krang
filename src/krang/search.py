@@ -158,9 +158,8 @@ _BOOLEAN_OPS = {"AND", "OR", "NOT"}
 # FTS5 bm25() returns negative scores (more negative = more relevant).
 # Weights are passed as arguments: bm25(fts_table, w0, w1, w2, ...)
 # where w_i is the weight for the i-th column in the FTS table.
-# Convention: title=col0, tags=col1, content=col2.
+# Convention: title=col0, content=col1.
 TITLE_WEIGHT = 3.0
-TAG_WEIGHT = 2.0
 CONTENT_WEIGHT = 1.0
 
 # Highlight markers for snippet generation.
@@ -247,22 +246,18 @@ def build_fts_query(raw: str) -> str:
     return result
 
 
-# Alias used by task specification.
-parse_search_query = build_fts_query
-
-
 # ---------------------------------------------------------------------------
 # BM25 helpers (used by sqlite_store to build SQL)
 # ---------------------------------------------------------------------------
 
 
-def bm25_weights() -> tuple[float, float, float]:
-    """Return ``(title_weight, tag_weight, content_weight)`` for FTS5 bm25().
+def bm25_weights() -> tuple[float, float]:
+    """Return ``(title_weight, content_weight)`` for FTS5 bm25().
 
-    The SQLite store should use these in its ``bm25(fts_table, ?, ?, ?)`` call
-    so that title matches are ranked 3x, tag matches 2x, and content 1x.
+    The SQLite store should use these in its ``bm25(fts_table, ?, ?)`` call
+    so that title matches are ranked 3x and content 1x.
     """
-    return (TITLE_WEIGHT, TAG_WEIGHT, CONTENT_WEIGHT)
+    return (TITLE_WEIGHT, CONTENT_WEIGHT)
 
 
 def generate_snippet(
@@ -379,7 +374,11 @@ async def suggest_related(
 
 
 async def find_stale_notes(store: NoteStore, days: int = 30) -> list[StaleItem]:
-    """Return active notes not updated in the last *days* days, most stale first."""
+    """Return active notes not updated in the last *days* days, most stale first.
+
+    Reference implementation that works with any NoteStore backend.
+    SQLiteNoteStore uses an optimised SQL query instead.
+    """
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
 
@@ -398,17 +397,17 @@ async def find_stale_notes(store: NoteStore, days: int = 30) -> list[StaleItem]:
     return stale
 
 
-# Alias used by task specification.
-get_stale_items = find_stale_notes
-
-
 # ---------------------------------------------------------------------------
 # Daily digest
 # ---------------------------------------------------------------------------
 
 
 async def build_daily_digest(store: NoteStore) -> DailyDigest:
-    """Build an activity summary over all notes in the store."""
+    """Build an activity summary over all notes in the store.
+
+    Reference implementation that works with any NoteStore backend.
+    SQLiteNoteStore uses optimised SQL queries instead.
+    """
     all_notes = await store.list_all()
 
     now = datetime.now(timezone.utc)
@@ -449,7 +448,3 @@ async def build_daily_digest(store: NoteStore) -> DailyDigest:
         tag_distribution=top_tags,
         stale_count=len(stale_items),
     )
-
-
-# Alias used by task specification.
-get_daily_digest = build_daily_digest

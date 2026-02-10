@@ -20,7 +20,13 @@ from krang.models import (
 logger = logging.getLogger("krang.server")
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
-mcp = FastMCP("krang")
+mcp = FastMCP(
+    "krang",
+    instructions=(
+        "A second brain for humans and their agents"
+        " — knowledge management with full-text search"
+    ),
+)
 
 # ---------------------------------------------------------------------------
 # Store singleton — initialised lazily on first tool call
@@ -41,6 +47,13 @@ async def _get_store():
         _store = SQLiteNoteStore(db_path)
         await _store.initialize()
     return _store
+
+
+# TODO: Add graceful shutdown to close the store connection when the server
+# exits.  FastMCP exposes a `lifespan` context-manager parameter but does not
+# provide a simple `@mcp.on_shutdown` hook.  A lifespan-based approach would
+# require restructuring the lazy singleton.  Revisit once FastMCP adds a
+# first-class shutdown callback.
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +374,45 @@ async def suggest_related(note_id: str, limit: int = 5) -> str:
     except Exception:
         logger.exception("suggest_related failed")
         return f"Error: could not find related notes for '{note_id}'."
+
+
+# ---------------------------------------------------------------------------
+# MCP Prompts
+# ---------------------------------------------------------------------------
+
+
+@mcp.prompt()
+def review_stale(days: int = 30) -> str:
+    """Review notes that haven't been updated recently and suggest actions."""
+    return (
+        f"Please use the get_stale_items tool with days={days} to find stale notes. "
+        "For each stale note, suggest whether to update, archive, or delete it, "
+        "and explain your reasoning."
+    )
+
+
+@mcp.prompt()
+def summarize_kb() -> str:
+    """Summarize the current state of the knowledge base."""
+    return (
+        "Please use the daily_digest tool to get an overview of the knowledge base, "
+        "then use search_notes with a broad query to understand the main topics. "
+        "Provide a concise summary of: total notes, key topics and themes, "
+        "category distribution, and any recommendations for organization."
+    )
+
+
+@mcp.prompt()
+def find_gaps() -> str:
+    """Identify gaps and underrepresented topics in the knowledge base."""
+    return (
+        "Please use the daily_digest tool, then list_tags and list_categories "
+        "to understand the knowledge base structure. Identify: "
+        "1) Categories with very few notes that might need expansion, "
+        "2) Topics that seem related but aren't connected, "
+        "3) Potential new categories or tags that could improve organization. "
+        "Provide specific, actionable recommendations."
+    )
 
 
 # ---------------------------------------------------------------------------

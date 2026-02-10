@@ -37,6 +37,14 @@ class NoteStore(Protocol):
         """Release resources (DB connections, file handles, etc.)."""
         ...
 
+    async def __aenter__(self) -> NoteStore:
+        """Enter async context manager (calls initialize)."""
+        ...
+
+    async def __aexit__(self, *exc: object) -> None:
+        """Exit async context manager (calls close)."""
+        ...
+
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------

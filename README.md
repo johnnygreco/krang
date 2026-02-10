@@ -40,6 +40,14 @@ If `KRANG_DB_PATH` is not set, it defaults to `~/.krang/brain.db`.
 | `daily_digest` | Activity summary | *(none)* |
 | `suggest_related` | Find related notes | `note_id`, `limit?` |
 
+### Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `review_stale` | Review stale notes and suggest actions (update/archive/delete) |
+| `summarize_kb` | Get a high-level summary of the knowledge base |
+| `find_gaps` | Identify underrepresented topics and organization improvements |
+
 ## Development
 
 ```bash
