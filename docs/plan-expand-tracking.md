@@ -33,13 +33,117 @@ SavedPrompt
 └── metadata: dict[str, str]    # Arbitrary key-value pairs
 ```
 
-### Trigger/Keyword System
+### User Flow: How Prompts Get Added
 
-Prompts can be recalled in three ways:
+Prompt creation is always **agent-mediated** — the user expresses intent in natural language, and the agent translates it into a `save_prompt` tool call. There is no raw command interception layer in kraang (MCP servers don't see user input directly; the agent does).
 
-1. **By trigger command**: `/sec-review` matches `trigger="/sec-review"`. Triggers must be unique. The MCP tool `recall_prompt` accepts a trigger string and returns the rendered template.
-2. **By name**: `recall_prompt(name="security-review")` does an exact match on the `name` field.
-3. **By keyword search**: `search_prompts(query="OWASP security")` does FTS across `name`, `description`, and `template` fields.
+**Flow 1 — Explicit save request** (primary path):
+```
+User:  "Save this as a reusable prompt called sec-review:
+        Review {{file_path}} for security issues with OWASP top-10 focus"
+
+Agent: (recognizes save intent, calls save_prompt)
+       save_prompt(
+           name="sec-review",
+           trigger="/sec-review",
+           template="Review {{file_path}} for security issues with OWASP top-10 focus",
+           description="OWASP-focused security review of a single file",
+           tags=["security", "code-review"],
+           category="code-review"
+       )
+
+Kraang: Creates the prompt, returns "Saved prompt 'sec-review' (ID: a1b2c3d4e5f6)"
+```
+
+**Flow 2 — Recall by trigger**:
+```
+User:  "/sec-review src/auth.py"
+
+Agent: (recognizes trigger prefix, calls recall_prompt)
+       recall_prompt(trigger="/sec-review", variables={"file_path": "src/auth.py"})
+
+Kraang: Returns rendered template, increments usage_count, updates last_used_at
+Agent: Uses the rendered prompt as its instructions
+```
+
+**Flow 3 — Recall by name or search** (when user doesn't remember the exact trigger):
+```
+User:  "Use that security review prompt on src/auth.py"
+
+Agent: (searches for it)
+       search_prompts(query="security review")
+
+Kraang: Returns matching prompts with scores
+Agent: Picks the best match, calls recall_prompt by name
+```
+
+**What kraang does NOT do**: Kraang never sees raw user input. It cannot intercept `/sec-review` before the agent. The agent must recognize the trigger pattern and translate it into a `recall_prompt` call. This is a deliberate design choice — kraang is a storage/retrieval layer, not an input processor.
+
+### Trigger Rules and Determination
+
+**Who picks the trigger?**
+
+1. **User specifies**: "Save this as `/sec-review`" — the agent passes the trigger through directly.
+2. **Auto-derived from name**: If no trigger is provided, kraang derives one from the `name` field by prepending `/`. So `name="sec-review"` automatically gets `trigger="/sec-review"`.
+3. **No trigger**: A prompt can exist without a trigger (the field is nullable). It's still recallable by name or keyword search.
+
+**Trigger format rules** (validated on save):
+
+| Rule | Constraint |
+|------|-----------|
+| Prefix | Must start with `/` |
+| Characters | Lowercase alphanumeric and hyphens only: `/[a-z0-9][a-z0-9-]*$/` |
+| Length | 2-50 characters (excluding the `/` prefix) |
+| Uniqueness | Must be unique across all saved prompts (enforced by DB `UNIQUE` constraint) |
+| Reserved | Must not collide with reserved triggers (see below) |
+
+**Auto-derivation logic** (in the store's create method):
+```python
+if trigger is None and name:
+    candidate = f"/{name.lower().replace(' ', '-')}"
+    if _is_valid_trigger(candidate):
+        trigger = candidate
+    # else: leave trigger as None, prompt is name/search-only
+```
+
+### Trigger Collision Handling
+
+There are three collision domains to consider:
+
+**1. Collisions between saved prompts** — Handled by the schema's `UNIQUE` constraint on `trigger`. If a user tries to save a prompt with `trigger="/sec-review"` and one already exists, `save_prompt` returns an error:
+
+```
+"Error: trigger '/sec-review' is already in use by prompt 'security-review'.
+ Use a different trigger, or update the existing prompt."
+```
+
+**2. Collisions with kraang's own MCP tool names** — Not a real risk. MCP tools (`add_note`, `search_notes`, etc.) live in a different namespace from triggers. Tools are called programmatically by the agent; triggers are a user-facing convention the agent interprets. No overlap.
+
+**3. Collisions with host application commands** — This is the real risk. If kraang is used inside Claude Code, commands like `/help`, `/clear`, `/compact`, `/review`, `/model`, etc. are intercepted by the host before the agent sees them. A saved prompt with trigger `/review` would be unreachable because Claude Code would consume the input first.
+
+**Solution: Reserved trigger blocklist.** Kraang validates triggers against a blocklist of known host commands on save. The blocklist is stored as a constant and checked in `save_prompt`:
+
+```python
+RESERVED_TRIGGERS: frozenset[str] = frozenset({
+    # Claude Code built-in commands
+    "/help", "/clear", "/compact", "/review", "/init",
+    "/config", "/cost", "/doctor", "/login", "/logout",
+    "/status", "/memory", "/mcp", "/vim", "/model",
+    "/permissions", "/terminal-setup", "/listen",
+    "/commit", "/pr-comments", "/bug",
+    # Generic safety reserves
+    "/exit", "/quit", "/reset", "/undo", "/redo",
+})
+```
+
+If a trigger matches a reserved name, `save_prompt` returns:
+
+```
+"Error: trigger '/review' is reserved (conflicts with a host application command).
+ Choose a different trigger name."
+```
+
+**Recommendation**: The blocklist approach is simple and sufficient. A namespace prefix (e.g., `/k:sec-review`) was considered but rejected — it's ugly and hurts adoption. The blocklist is easy to maintain and covers the practical cases. If kraang is later used with a different host application, the blocklist can be made configurable via an environment variable (`KRAANG_RESERVED_TRIGGERS`).
 
 ### Template Variables
 
@@ -490,14 +594,30 @@ New MCP Resources: `prompt://{prompt_id}`, `plan://{plan_id}`, `session://{sessi
 
 ---
 
-## 10. Open Questions
+## 10. Design Decisions (Resolved)
 
-1. **Prompt versioning**: Should updating a prompt's template create a new version or overwrite? Version history adds complexity but is valuable for frequently-edited prompts. A `prompt_versions` table could store previous template bodies.
+1. **Trigger collision handling**: Use a blocklist of reserved triggers validated on save, rejectable with a clear error message. The blocklist is configurable via `KRAANG_RESERVED_TRIGGERS` env var for non-Claude-Code hosts. Namespace prefixes (`/k:...`) were rejected for ergonomic reasons.
 
-2. **Plan-to-note linking**: Should completing a plan auto-generate a summary note? This would bridge the plan system back to the existing notes system, creating a permanent record.
+2. **Trigger determination**: User-specified first, auto-derived from `name` as fallback, nullable if neither works. Format: `/[a-z0-9][a-z0-9-]*`, 2-50 chars, must be unique.
 
-3. **Session auto-management**: Should sessions start/end automatically (e.g., start on first tool call, end after inactivity), or require explicit user control? Auto-start is more ergonomic; explicit control is more predictable.
+3. **Prompt creation flow**: Always agent-mediated. The user expresses intent in natural language ("save this as a prompt"), the agent calls `save_prompt`. Kraang is a storage layer, not an input interceptor.
 
-4. **Event granularity**: Should session events record every tool call (high volume, good for auditing) or only entity lifecycle events like creation/completion (lower volume, sufficient for most use cases)? Recommend starting with entity lifecycle events only.
+4. **Prompt recall flow**: The agent recognizes trigger patterns (e.g., user types `/sec-review`) and calls `recall_prompt`. Kraang increments `usage_count` and `last_used_at` on each recall.
 
-5. **Prompt sharing**: Should there be an import/export format for saved prompts (JSON, YAML) so users can share prompt libraries? Useful but can be deferred.
+---
+
+## 11. Open Questions
+
+1. **Prompt versioning**: Should updating a prompt's template create a new version or overwrite? Version history adds complexity but is valuable for frequently-edited prompts. A `prompt_versions` table could store previous template bodies. **Recommendation**: Defer. Start with overwrite semantics. Users who need version history can copy the old template into a note before updating. Add versioning in a future phase if usage patterns demand it.
+
+2. **Plan-to-note linking**: Should completing a plan auto-generate a summary note? This would bridge the plan system back to the existing notes system, creating a permanent record. **Recommendation**: Yes, but make it opt-in. Add an `auto_summarize` flag on `complete_plan` (default `false`). When true, kraang creates a note with category `"plan-summary"` and a tag linking to the plan ID.
+
+3. **Session auto-management**: Should sessions start/end automatically (e.g., start on first tool call, end after inactivity), or require explicit user control? **Recommendation**: Hybrid. Auto-start a session on the first tool call if none is active. Require explicit `end_session` to close. If a session is still active after 24 hours, auto-end it on the next tool call and start a fresh one. This gives ergonomic defaults without silent data loss.
+
+4. **Event granularity**: Should session events record every tool call (high volume, good for auditing) or only entity lifecycle events like creation/completion (lower volume, sufficient for most use cases)? **Recommendation**: Entity lifecycle events only (create, update, delete, complete). This keeps the event table small and meaningful. A future "audit mode" could add tool-call-level logging behind a flag.
+
+5. **Prompt sharing**: Should there be an import/export format for saved prompts (JSON, YAML) so users can share prompt libraries? **Recommendation**: Defer to Phase 5. When implemented, use JSON matching the `SavedPrompt` Pydantic model schema, with an `export_prompts` / `import_prompts` tool pair. This is a natural extension but not needed for the core system.
+
+6. **Blocklist maintenance**: The reserved trigger blocklist will drift as host applications add new commands. **Recommendation**: Ship a sensible default, expose `KRAANG_RESERVED_TRIGGERS` as a comma-separated env var for overrides, and document the expectation that users update it if they hit collisions. Kraang could also expose a `list_reserved_triggers` tool so agents can help users avoid conflicts proactively.
+
+7. **Template variable validation on recall**: What happens when a user recalls a prompt but doesn't provide all required variables? **Recommendation**: Return the template with unfilled `{{variable}}` placeholders intact and include a warning listing the missing variables. Don't error — the agent can still use a partially-filled template and fill the gaps from context. Add a `strict` parameter on `recall_prompt` (default `false`) that errors on missing variables for users who want enforcement.
