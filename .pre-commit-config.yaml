@@ -1,0 +1,22 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Run the linter (with --fix to auto-fix, matches Makefile lint target)
+      - id: ruff-check
+        args: [--fix]
+        files: ^src/|^tests/
+      # Run the formatter
+      - id: ruff-format
+        files: ^src/|^tests/
+
+  # Type checking with ty (matches Makefile lint target)
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty
+        entry: uv run ty check src/kraang/
+        language: system
+        pass_filenames: false

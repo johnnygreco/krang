@@ -75,8 +75,15 @@ Kraang uses a layered architecture:
 ```bash
 git clone https://github.com/johnnygreco/kraang.git && cd kraang
 uv sync --extra dev
+make install-hooks   # install pre-commit hooks (run once)
 make test
 make lint
+```
+
+Pre-commit hooks run automatically before each commit (ruff format, ruff check --fix, ty). Run manually:
+
+```bash
+uv run pre-commit run --all-files
 ```
 
 Run the full check suite:
