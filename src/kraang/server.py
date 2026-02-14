@@ -1,24 +1,27 @@
-"""MCP server for kraang — exposes note tools and resources over stdio."""
+"""MCP server for kraang — 5 tools: remember, recall, read_session, forget, status."""
 
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from mcp.server.fastmcp import FastMCP
 
-from kraang.models import (
-    NoteCreate,
-    NoteStatus,
-    NoteUpdate,
-    SearchQuery,
+from kraang.config import resolve_db_path
+from kraang.formatter import (
+    format_forget,
+    format_recall_results,
+    format_remember_created,
+    format_remember_updated,
+    format_status,
+    format_transcript,
 )
+from kraang.search import build_fts_query
 
 if TYPE_CHECKING:
-    from kraang.sqlite_store import SQLiteNoteStore
+    from kraang.store import SQLiteStore
 
 logger = logging.getLogger("kraang.server")
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
@@ -26,7 +29,10 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 mcp = FastMCP(
     "kraang",
     instructions=(
-        "A second brain for humans and their agents — knowledge management with full-text search"
+        "A second brain for humans and their agents — "
+        "project-scoped knowledge management with session indexing and full-text search. "
+        "Tools: remember (save knowledge), recall (search), read_session (view transcript), "
+        "forget (downweight), status (overview)."
     ),
 )
 
@@ -34,28 +40,20 @@ mcp = FastMCP(
 # Store singleton — initialised lazily on first tool call
 # ---------------------------------------------------------------------------
 
-_store = None
+_store: SQLiteStore | None = None
 
 
-async def _get_store() -> SQLiteNoteStore:
-    """Return the initialised NoteStore singleton."""
+async def _get_store() -> SQLiteStore:
+    """Return the initialised SQLiteStore singleton."""
     global _store
     if _store is None:
-        from kraang.sqlite_store import SQLiteNoteStore
+        from kraang.store import SQLiteStore
 
-        db_path = os.environ.get("KRAANG_DB_PATH", str(Path.home() / ".kraang" / "brain.db"))
-        db_path = str(Path(db_path).expanduser())
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        _store = SQLiteNoteStore(db_path)
+        db_path = resolve_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        _store = SQLiteStore(str(db_path))
         await _store.initialize()
     return _store
-
-
-# TODO: Add graceful shutdown to close the store connection when the server
-# exits.  FastMCP exposes a `lifespan` context-manager parameter but does not
-# provide a simple `@mcp.on_shutdown` hook.  A lifespan-based approach would
-# require restructuring the lazy singleton.  Revisit once FastMCP adds a
-# first-class shutdown callback.
 
 
 # ---------------------------------------------------------------------------
@@ -64,396 +62,189 @@ async def _get_store() -> SQLiteNoteStore:
 
 
 @mcp.tool()
-async def add_note(
+async def remember(
     title: str,
     content: str,
     tags: list[str] | None = None,
     category: str = "",
-    metadata: dict[str, str] | None = None,
 ) -> str:
-    """Add a new note to the knowledge base.
+    """Save knowledge to the brain. If a note with this title exists, update it. Otherwise create.
 
     Args:
-        title: Title of the note.
-        content: Full text content of the note.
+        title: Title of the note. Use the exact same title to update an existing note.
+        content: Full content of the note.
         tags: Optional list of tags for categorisation.
         category: Optional category label.
-        metadata: Optional key-value metadata pairs.
     """
     try:
-        tags = tags if tags is not None else []
-        metadata = metadata if metadata is not None else {}
+        # Validate inputs
+        title = title.strip()
+        content = content.strip()
+        if not title:
+            return "Error: title must not be empty."
+        if not content:
+            return "Error: content must not be empty."
+
         store = await _get_store()
-        note = await store.create(
-            NoteCreate(
-                title=title,
-                content=content,
-                tags=tags,
-                category=category,
-                metadata=metadata,
-            )
-        )
-        return f"Created note '{note.title}' (ID: {note.note_id})"
-    except Exception:
-        logger.exception("add_note failed")
-        return f"Error: could not create note '{title}'."
-
-
-@mcp.tool()
-async def search_notes(
-    query: str,
-    tags: list[str] | None = None,
-    category: str = "",
-    status: Literal["active", "archived", ""] = "",
-    limit: int = 20,
-) -> str:
-    """Search notes by keyword, tags, category, or status.
-
-    Args:
-        query: Search query string (full-text search).
-        tags: Filter results to notes that have ALL of these tags.
-        category: Filter results to this category.
-        status: Filter by note status ('active' or 'archived').
-        limit: Maximum number of results to return (1-100, default 20).
-    """
-    try:
-        tags = tags if tags is not None else []
-        store = await _get_store()
-        sq = SearchQuery(
-            query=query,
-            tags=tags,
-            category=category if category else None,
-            status=NoteStatus(status) if status else None,
-            limit=limit,
-        )
-        response = await store.search(sq)
-
-        if response.total == 0:
-            return f"No notes found matching '{query}'."
-
-        lines = [f"Found {response.total} results for '{query}':\n"]
-        for i, result in enumerate(response.results, 1):
-            note = result.note
-            tag_str = ", ".join(note.tags) if note.tags else "none"
-            snippet = result.snippet or note.content[:120]
-            lines.append(f"{i}. {note.title} [ID: {note.note_id}] (score: {result.score:.2f})")
-            lines.append(f"   {snippet}")
-            lines.append(f"   Tags: {tag_str}\n")
-        return "\n".join(lines)
-    except Exception:
-        logger.exception("search_notes failed")
-        return f"Error: search for '{query}' failed."
-
-
-@mcp.tool()
-async def update_note(
-    note_id: str,
-    title: str | None = None,
-    content: str | None = None,
-    tags: list[str] | None = None,
-    category: str | None = None,
-    status: Literal["active", "archived"] | None = None,
-) -> str:
-    """Update an existing note. Only provided fields will be changed.
-
-    Args:
-        note_id: ID of the note to update.
-        title: New title (optional).
-        content: New content (optional).
-        tags: New tag list, replaces existing tags (optional).
-        category: New category (optional).
-        status: New status — 'active' or 'archived' (optional).
-    """
-    try:
-        store = await _get_store()
-        update = NoteUpdate(
+        note, created = await store.upsert_note(
             title=title,
             content=content,
             tags=tags,
             category=category,
-            status=NoteStatus(status) if status else None,
         )
-        result = await store.update(note_id, update)
-        if result is None:
-            return f"Note '{note_id}' not found."
-        return f"Updated note '{note_id}'."
+
+        if created:
+            # Check for similar existing notes (fuzzy duplicate detection)
+            similar = await store.find_similar_titles(title, limit=3)
+            # Filter out the just-created note itself
+            similar = [s for s in similar if s.note_id != note.note_id]
+            return format_remember_created(note, similar if similar else None)
+        else:
+            return format_remember_updated(note)
     except Exception:
-        logger.exception("update_note failed")
-        return f"Error: could not update note '{note_id}'."
+        logger.exception("remember failed")
+        return f'Error: could not save "{title}".'
 
 
 @mcp.tool()
-async def delete_note(note_id: str) -> str:
-    """Permanently delete a note from the knowledge base.
-
-    Args:
-        note_id: ID of the note to delete.
-    """
-    try:
-        store = await _get_store()
-        deleted = await store.delete(note_id)
-        if not deleted:
-            return f"Note '{note_id}' not found."
-        return f"Deleted note '{note_id}'."
-    except Exception:
-        logger.exception("delete_note failed")
-        return f"Error: could not delete note '{note_id}'."
-
-
-@mcp.tool()
-async def get_note(note_id: str) -> str:
-    """Retrieve the full content of a note by its ID.
-
-    Args:
-        note_id: ID of the note to retrieve.
-    """
-    try:
-        store = await _get_store()
-        note = await store.get(note_id)
-        if note is None:
-            return f"Note '{note_id}' not found."
-
-        tag_str = ", ".join(note.tags) if note.tags else "none"
-        lines = [
-            f"Title: {note.title}",
-            f"ID: {note.note_id}",
-            f"Status: {note.status.value}",
-            f"Category: {note.category or 'none'}",
-            f"Tags: {tag_str}",
-            f"Created: {note.created_at.isoformat()}",
-            f"Updated: {note.updated_at.isoformat()}",
-        ]
-        if note.metadata:
-            meta_parts = [f"  {k}: {v}" for k, v in note.metadata.items()]
-            lines.append("Metadata:")
-            lines.extend(meta_parts)
-        lines.append("---")
-        lines.append(note.content)
-        return "\n".join(lines)
-    except Exception:
-        logger.exception("get_note failed")
-        return f"Error: could not retrieve note '{note_id}'."
-
-
-@mcp.tool()
-async def list_tags() -> str:
-    """List all tags currently used across all notes."""
-    try:
-        store = await _get_store()
-        tags = await store.list_tags()
-        if not tags:
-            return "No tags found."
-        return f"Tags: {', '.join(tags)}"
-    except Exception:
-        logger.exception("list_tags failed")
-        return "Error: could not list tags."
-
-
-@mcp.tool()
-async def list_categories() -> str:
-    """List all categories currently used across all notes."""
-    try:
-        store = await _get_store()
-        categories = await store.list_categories()
-        if not categories:
-            return "No categories found."
-        return f"Categories: {', '.join(categories)}"
-    except Exception:
-        logger.exception("list_categories failed")
-        return "Error: could not list categories."
-
-
-@mcp.tool()
-async def list_notes(
-    status: Literal["active", "archived", ""] = "",
-    limit: int = 20,
-    offset: int = 0,
+async def recall(
+    query: str,
+    scope: Literal["all", "notes", "sessions"] = "all",
+    limit: int = 10,
 ) -> str:
-    """Browse notes in the knowledge base with optional status filter.
+    """Search notes and conversation sessions. Returns markdown-formatted results.
 
     Args:
-        status: Filter by status ('active' or 'archived'). Empty for all.
-        limit: Maximum number of notes to return (default 20).
-        offset: Number of notes to skip for pagination (default 0).
+        query: Natural language search query.
+        scope: What to search — "all" (default), "notes", or "sessions".
+        limit: Maximum number of results per type (default 10).
     """
     try:
         store = await _get_store()
-        s = NoteStatus(status) if status else None
-        notes = await store.list_all(status=s, limit=limit, offset=offset)
-        if not notes:
-            return "No notes found."
-        lines = [f"Showing {len(notes)} notes:\n"]
-        for i, note in enumerate(notes, offset + 1):
-            tag_str = ", ".join(note.tags) if note.tags else "none"
-            lines.append(f"{i}. {note.title} [{note.status.value}]")
-            lines.append(f"   ID: {note.note_id} | Tags: {tag_str}\n")
-        return "\n".join(lines)
+        fts_expr = build_fts_query(query)
+
+        if not fts_expr:
+            return f'No results found for "{query}".'
+
+        from kraang.models import NoteSearchResult, SessionSearchResult
+
+        notes: list[NoteSearchResult] = []
+        sessions: list[SessionSearchResult] = []
+
+        if scope in ("all", "notes"):
+            notes = await store.search_notes(fts_expr, limit=limit)
+
+        if scope in ("all", "sessions"):
+            sessions = await store.search_sessions(fts_expr, limit=limit)
+
+        return format_recall_results(query, notes, sessions)
     except Exception:
-        logger.exception("list_notes failed")
-        return "Error: could not list notes."
+        logger.exception("recall failed")
+        return f'Error: search for "{query}" failed.'
 
 
 @mcp.tool()
-async def get_stale_items(days: int = 30) -> str:
-    """Find notes that haven't been updated recently.
+async def read_session(
+    session_id: str,
+    max_turns: int = 0,
+) -> str:
+    """Load a full conversation transcript by session ID.
+
+    Use `recall` to find sessions first, then use the session ID to read the full transcript.
 
     Args:
-        days: Number of days since last update to consider a note stale (default 30).
+        session_id: Full UUID or 8-char prefix of the session.
+        max_turns: Maximum turns to include (0 = all).
     """
     try:
         store = await _get_store()
-        items = await store.get_stale(days)
-        if not items:
-            return f"No stale notes (all updated within the last {days} days)."
-        lines = [f"{len(items)} stale notes (not updated in {days}+ days):\n"]
-        for item in items:
-            lines.append(f"- {item.note.title} ({item.days_since_update} days)")
-        return "\n".join(lines)
+        try:
+            session = await store.get_session(session_id)
+        except ValueError as e:
+            return str(e)
+
+        if session is None:
+            return f'Session "{session_id}" not found.'
+
+        # Find the JSONL file
+        from kraang.config import encode_project_path
+
+        encoded = encode_project_path(session.project_path)
+        sessions_dir = Path.home() / ".claude" / "projects" / encoded
+        jsonl_path = sessions_dir / f"{session.session_id}.jsonl"
+
+        if not jsonl_path.exists():
+            return f'Session transcript file not found for "{session_id}".'
+
+        from kraang.indexer import read_transcript
+
+        turns = read_transcript(jsonl_path)
+        return format_transcript(session, turns, max_turns=max_turns)
     except Exception:
-        logger.exception("get_stale_items failed")
-        return "Error: could not retrieve stale items."
+        logger.exception("read_session failed")
+        return f'Error: could not read session "{session_id}".'
 
 
 @mcp.tool()
-async def daily_digest() -> str:
-    """Get a summary of your knowledge base.
+async def forget(
+    title: str,
+    relevance: float = 0.0,
+) -> str:
+    """Adjust a note's relevance. Use to downweight or hide outdated/wrong notes.
 
-    Returns totals, recent activity, top categories/tags, and stale note count.
-    """
-    try:
-        store = await _get_store()
-        digest = await store.get_daily_digest()
-
-        lines = ["Daily Digest\n"]
-        lines.append(f"Total notes: {digest.total_notes}")
-        lines.append(f"Recent activity: {len(digest.recent_notes)} notes")
-        lines.append(f"Stale notes: {digest.stale_count}\n")
-
-        if digest.category_distribution:
-            sorted_cats = sorted(
-                digest.category_distribution.items(), key=lambda x: x[1], reverse=True
-            )
-            cat_parts = [f"{cat} ({count})" for cat, count in sorted_cats[:5]]
-            lines.append(f"Top categories: {', '.join(cat_parts)}")
-
-        if digest.tag_distribution:
-            sorted_tags = sorted(digest.tag_distribution.items(), key=lambda x: x[1], reverse=True)
-            tag_parts = [f"{tag} ({count})" for tag, count in sorted_tags[:5]]
-            lines.append(f"Top tags: {', '.join(tag_parts)}")
-
-        return "\n".join(lines)
-    except Exception:
-        logger.exception("daily_digest failed")
-        return "Error: could not generate daily digest."
-
-
-@mcp.tool()
-async def suggest_related(note_id: str, limit: int = 5) -> str:
-    """Find notes that are related to the given note.
+    - forget("title") -> hidden from search (relevance=0.0)
+    - forget("title", 0.3) -> deprioritized (30% of natural score)
+    - To restore: use remember() with the same title (resets to 1.0)
 
     Args:
-        note_id: ID of the note to find related notes for.
-        limit: Maximum number of related notes to return (default 5).
+        title: Title of the note to adjust.
+        relevance: Score from 0.0 (hidden) to 1.0 (full weight). Default: 0.0.
     """
+    if not (0.0 <= relevance <= 1.0):
+        return f"Error: relevance must be between 0.0 and 1.0, got {relevance}."
+
     try:
         store = await _get_store()
-        # First check the note exists
-        note = await store.get(note_id)
+        note = await store.set_relevance(title, relevance)
         if note is None:
-            return f"Note '{note_id}' not found."
-
-        results = await store.get_related(note_id, limit)
-        if not results:
-            return f"No related notes found for '{note.title}'."
-
-        lines = [f"Related to '{note.title}':\n"]
-        for i, result in enumerate(results, 1):
-            rid = result.note.note_id
-            lines.append(f"{i}. {result.note.title} [ID: {rid}] (score: {result.score:.2f})")
-        return "\n".join(lines)
+            return f'Note "{title}" not found.'
+        return format_forget(note.title, relevance)
     except Exception:
-        logger.exception("suggest_related failed")
-        return f"Error: could not find related notes for '{note_id}'."
+        logger.exception("forget failed")
+        return f'Error: could not forget "{title}".'
 
 
-# ---------------------------------------------------------------------------
-# MCP Prompts
-# ---------------------------------------------------------------------------
-
-
-@mcp.prompt()
-def review_stale(days: int = 30) -> str:
-    """Review notes that haven't been updated recently and suggest actions."""
-    return (
-        f"Please use the get_stale_items tool with days={days} to find stale notes. "
-        "For each stale note, suggest whether to update, archive, or delete it, "
-        "and explain your reasoning."
-    )
-
-
-@mcp.prompt()
-def summarize_kb() -> str:
-    """Summarize the current state of the knowledge base."""
-    return (
-        "Please use the daily_digest tool to get an overview of the knowledge base, "
-        "then use search_notes with a broad query to understand the main topics. "
-        "Provide a concise summary of: total notes, key topics and themes, "
-        "category distribution, and any recommendations for organization."
-    )
-
-
-@mcp.prompt()
-def find_gaps() -> str:
-    """Identify gaps and underrepresented topics in the knowledge base."""
-    return (
-        "Please use the daily_digest tool, then list_tags and list_categories "
-        "to understand the knowledge base structure. Identify: "
-        "1) Categories with very few notes that might need expansion, "
-        "2) Topics that seem related but aren't connected, "
-        "3) Potential new categories or tags that could improve organization. "
-        "Provide specific, actionable recommendations."
-    )
-
-
-# ---------------------------------------------------------------------------
-# MCP Resources
-# ---------------------------------------------------------------------------
-
-
-@mcp.resource("note://{note_id}")
-async def get_note_resource(note_id: str) -> str:
-    """Retrieve the full content of a note by its ID."""
+@mcp.tool()
+async def status() -> str:
+    """Get a knowledge base overview: counts, recent activity, tags."""
     try:
         store = await _get_store()
-        note = await store.get(note_id)
-        if note is None:
-            return f"Note '{note_id}' not found."
 
-        tag_str = ", ".join(note.tags) if note.tags else "none"
-        meta_str = ""
-        if note.metadata:
-            meta_parts = [f"  {k}: {v}" for k, v in note.metadata.items()]
-            meta_str = "\nMetadata:\n" + "\n".join(meta_parts)
+        active, forgotten = await store.count_notes()
+        session_count = await store.count_sessions()
+        last_indexed = await store.last_indexed_at()
+        recent = await store.recent_notes(days=7, limit=10)
+        categories = await store.category_counts()
+        tags = await store.tag_counts()
+        stale = await store.stale_notes(days=30)
 
-        return (
-            f"Title: {note.title}\n"
-            f"ID: {note.note_id}\n"
-            f"Status: {note.status.value}\n"
-            f"Category: {note.category or 'none'}\n"
-            f"Tags: {tag_str}\n"
-            f"Created: {note.created_at.isoformat()}\n"
-            f"Updated: {note.updated_at.isoformat()}\n"
-            f"{meta_str}\n"
-            f"---\n"
-            f"{note.content}"
+        return format_status(
+            active_notes=active,
+            forgotten_notes=forgotten,
+            session_count=session_count,
+            last_indexed=last_indexed,
+            recent_notes=recent,
+            categories=categories,
+            tags=tags,
+            stale_notes=stale,
         )
     except Exception:
-        logger.exception("get_note_resource failed")
-        return f"Error: could not retrieve note '{note_id}'."
+        logger.exception("status failed")
+        return "Error: could not generate status."
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Entry point (used by `kraang serve`)
 # ---------------------------------------------------------------------------
 
 

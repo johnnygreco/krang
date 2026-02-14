@@ -5,9 +5,19 @@
   </tr>
 </table>
 
-Kraang is an MCP (Model Context Protocol) server that gives AI assistants persistent memory backed by SQLite with FTS5 full-text search. It stores, searches, and manages knowledge notes so your agent can recall what matters.
+Kraang is an MCP (Model Context Protocol) server that gives AI assistants persistent memory and session indexing, backed by SQLite with FTS5 full-text search. It stores knowledge notes, indexes conversation transcripts, and surfaces what matters via search.
 
 ## Quick Start
+
+The fastest way to get started is with `kraang init`:
+
+```bash
+uvx kraang init
+```
+
+This creates a `.kraang/` directory, initializes the database, configures `.mcp.json`, sets up a `SessionEnd` hook for automatic session indexing, and indexes any existing sessions.
+
+### Manual Configuration
 
 Add to your MCP client configuration (e.g. Claude Code, Claude Desktop):
 
@@ -16,45 +26,49 @@ Add to your MCP client configuration (e.g. Claude Code, Claude Desktop):
   "mcpServers": {
     "kraang": {
       "command": "uvx",
-      "args": ["kraang"],
-      "env": { "KRAANG_DB_PATH": "~/.kraang/brain.db" }
+      "args": ["kraang", "serve"],
+      "env": { "KRAANG_DB_PATH": ".kraang/kraang.db" }
     }
   }
 }
 ```
 
-Or install it explicitly:
+## MCP Tools
 
-```bash
-uv pip install kraang
-# or
-pip install kraang
-```
+| Tool | Description |
+|------|-------------|
+| `remember` | Save knowledge to the brain. If a note with the same title exists, it updates in place. |
+| `recall` | Search notes and indexed sessions. Supports scoping to `"notes"`, `"sessions"`, or `"all"`. |
+| `read_session` | Load a full conversation transcript by session ID (use `recall` to find sessions first). |
+| `forget` | Downweight or hide a note by adjusting its relevance score (0.0 = hidden, 1.0 = full). |
+| `status` | Get a knowledge base overview: note/session counts, recent activity, top tags. |
 
-If `KRAANG_DB_PATH` is not set, it defaults to `~/.kraang/brain.db`.
+## CLI Commands
 
-## Tool Reference
+| Command | Description |
+|---------|-------------|
+| `kraang init` | Set up kraang for the current project (database, config, hooks, initial index). |
+| `kraang serve` | Run the MCP server over stdio (invoked by Claude Code). |
+| `kraang index` | Index or re-index conversation sessions for the project. |
+| `kraang sessions` | List recent conversation sessions. |
+| `kraang session <id>` | View a session transcript in detail. |
+| `kraang search <query>` | Search notes and sessions from the terminal. |
+| `kraang notes` | List notes in the knowledge base. |
+| `kraang status` | Show knowledge base health and statistics. |
 
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `add_note` | Add a new note | `title`, `content`, `tags?`, `category?`, `metadata?` |
-| `search_notes` | Full-text search with filters | `query`, `tags?`, `category?`, `status?`, `limit?` |
-| `update_note` | Update an existing note | `note_id`, `title?`, `content?`, `tags?`, `category?`, `status?` |
-| `delete_note` | Delete a note | `note_id` |
-| `list_tags` | List all tags | *(none)* |
-| `list_categories` | List all categories | *(none)* |
-| `list_notes` | Browse/list notes | `status?`, `limit?`, `offset?` |
-| `get_stale_items` | Find notes not updated recently | `days?` |
-| `daily_digest` | Activity summary | *(none)* |
-| `suggest_related` | Find related notes | `note_id`, `limit?` |
+## Architecture
 
-### Prompts
+Kraang uses a layered architecture:
 
-| Prompt | Description |
-|--------|-------------|
-| `review_stale` | Review stale notes and suggest actions (update/archive/delete) |
-| `summarize_kb` | Get a high-level summary of the knowledge base |
-| `find_gaps` | Identify underrepresented topics and organization improvements |
+1. **Models** (`models.py`) -- Pydantic schemas for notes, sessions, and search results.
+2. **Store** (`store.py`) -- SQLite backend with FTS5 full-text search and BM25 ranking.
+3. **Search** (`search.py`) -- Query parsing and FTS5 expression building.
+4. **Indexer** (`indexer.py`) -- Reads Claude Code JSONL transcripts and indexes sessions.
+5. **Server** (`server.py`) -- MCP server exposing 5 tools over stdio.
+6. **CLI** (`cli.py`) -- Typer CLI for init, serve, index, and local queries.
+7. **Formatter** (`formatter.py`) -- Markdown formatting for tool and CLI output.
+8. **Display** (`display.py`) -- Rich console rendering for CLI commands.
+9. **Config** (`config.py`) -- Project root detection and database path resolution.
 
 ## Development
 
@@ -71,15 +85,6 @@ Run the full check suite:
 make coverage   # tests + coverage report
 make format     # auto-format with ruff
 ```
-
-## Architecture
-
-Kraang uses a layered architecture:
-
-1. **Models** (`models.py`) -- Pydantic schemas define the data contracts: `Note`, `NoteCreate`, `NoteUpdate`, `SearchQuery`, etc.
-2. **Store Protocol** (`store.py`) -- An async `NoteStore` protocol that any storage backend must implement.
-3. **SQLite Backend** (`sqlite_store.py`) -- The default implementation using SQLite with FTS5 for full-text search and BM25 ranking.
-4. **MCP Server** (`server.py`) -- Exposes the store as MCP tools and resources over stdio, ready for any MCP-compatible client.
 
 ## License
 
