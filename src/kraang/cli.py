@@ -23,7 +23,7 @@ app = typer.Typer(
 )
 
 
-def _run(coro):  # type: ignore[no-untyped-def]
+def _run(coro):
     """Run an async coroutine synchronously."""
     return asyncio.run(coro)
 

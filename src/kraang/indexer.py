@@ -31,7 +31,7 @@ _FILE_EDIT_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})
 # ---------------------------------------------------------------------------
 
 
-def _extract_text_from_content(content: str | list[dict]) -> str:  # type: ignore[type-arg]
+def _extract_text_from_content(content: str | list[dict]) -> str:
     """Extract plain text from a message content field."""
     if isinstance(content, str):
         return content
@@ -47,14 +47,14 @@ def _is_noise_message(text: str) -> bool:
     return bool(_NOISE_PATTERNS.search(text))
 
 
-def _is_tool_result(content: str | list[dict]) -> bool:  # type: ignore[type-arg]
+def _is_tool_result(content: str | list[dict]) -> bool:
     """Check if content is a tool result."""
     if isinstance(content, list):
         return any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
     return False
 
 
-def _extract_tool_calls(content: str | list[dict]) -> tuple[list[str], list[str]]:  # type: ignore[type-arg]
+def _extract_tool_calls(content: str | list[dict]) -> tuple[list[str], list[str]]:
     """Extract tool names and edited file paths from assistant content.
 
     Returns (tool_names, file_paths).
