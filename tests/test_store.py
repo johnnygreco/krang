@@ -1,0 +1,439 @@
+"""Unit tests for SQLiteStore — notes + sessions, upsert, search, relevance."""
+
+from __future__ import annotations
+
+import asyncio
+
+from kraang.config import normalize_title
+from kraang.models import Session, utcnow
+from kraang.search import build_fts_query
+from kraang.store import SQLiteStore
+
+# ---------------------------------------------------------------------------
+# Note upsert
+# ---------------------------------------------------------------------------
+
+
+class TestUpsertNote:
+    async def test_create_new(self, store):
+        note, created = await store.upsert_note("Hello", "World")
+        assert created is True
+        assert note.title == "Hello"
+        assert note.content == "World"
+        assert note.note_id
+        assert note.relevance == 1.0
+
+    async def test_update_existing(self, store):
+        note1, created1 = await store.upsert_note("Test", "Content 1")
+        assert created1 is True
+
+        note2, created2 = await store.upsert_note("Test", "Content 2")
+        assert created2 is False
+        assert note2.note_id == note1.note_id
+        assert note2.content == "Content 2"
+
+    async def test_case_insensitive_upsert(self, store):
+        note1, _ = await store.upsert_note("My Title", "v1")
+        note2, created = await store.upsert_note("my title", "v2")
+        assert created is False
+        assert note2.note_id == note1.note_id
+        assert note2.content == "v2"
+
+    async def test_whitespace_normalized(self, store):
+        note1, _ = await store.upsert_note("  Extra   Spaces  ", "v1")
+        note2, created = await store.upsert_note("Extra Spaces", "v2")
+        assert created is False
+        assert note2.note_id == note1.note_id
+
+    async def test_with_tags_and_category(self, store):
+        note, _ = await store.upsert_note("Tagged", "Content", tags=["a", "b"], category="cat1")
+        assert note.tags == ["a", "b"]
+        assert note.category == "cat1"
+
+    async def test_upsert_restores_relevance(self, store):
+        """remember() after forget() should restore relevance to 1.0."""
+        await store.upsert_note("Forgotten", "Content")
+        await store.set_relevance("Forgotten", 0.0)
+
+        note = await store.get_note_by_title("Forgotten")
+        assert note is not None
+        assert note.relevance == 0.0
+
+        note2, created = await store.upsert_note("Forgotten", "Updated content")
+        assert created is False
+        assert note2.relevance == 1.0
+
+    async def test_title_normalized_stored(self, store):
+        note, _ = await store.upsert_note("Pytest Config", "Content")
+        assert note.title_normalized == normalize_title("Pytest Config")
+
+    async def test_timestamps_set(self, store):
+        note, _ = await store.upsert_note("Timestamp test", "Content")
+        assert note.created_at is not None
+        assert note.updated_at is not None
+        assert note.created_at.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# Get by title / id
+# ---------------------------------------------------------------------------
+
+
+class TestGetNote:
+    async def test_by_title(self, store):
+        await store.upsert_note("Find me", "Body")
+        found = await store.get_note_by_title("Find me")
+        assert found is not None
+        assert found.title == "Find me"
+
+    async def test_by_title_case_insensitive(self, store):
+        await store.upsert_note("CamelCase", "Body")
+        found = await store.get_note_by_title("camelcase")
+        assert found is not None
+
+    async def test_by_id(self, store):
+        note, _ = await store.upsert_note("ID test", "Body")
+        found = await store.get_note(note.note_id)
+        assert found is not None
+        assert found.note_id == note.note_id
+
+    async def test_not_found(self, store):
+        assert await store.get_note_by_title("nonexistent") is None
+        assert await store.get_note("nonexistent_id") is None
+
+
+# ---------------------------------------------------------------------------
+# Relevance / forget
+# ---------------------------------------------------------------------------
+
+
+class TestRelevance:
+    async def test_set_relevance(self, store):
+        await store.upsert_note("Forgettable", "Content")
+        note = await store.set_relevance("Forgettable", 0.3)
+        assert note is not None
+        assert note.relevance == 0.3
+
+    async def test_fully_forgotten(self, store):
+        await store.upsert_note("Gone", "Content")
+        note = await store.set_relevance("Gone", 0.0)
+        assert note is not None
+        assert note.relevance == 0.0
+
+    async def test_set_relevance_not_found(self, store):
+        result = await store.set_relevance("nonexistent", 0.5)
+        assert result is None
+
+    async def test_clamps_above_one(self, store):
+        await store.upsert_note("Clamped high", "Content")
+        note = await store.set_relevance("Clamped high", 5.0)
+        assert note is not None
+        assert note.relevance == 1.0
+
+    async def test_clamps_below_zero(self, store):
+        await store.upsert_note("Clamped low", "Content")
+        note = await store.set_relevance("Clamped low", -1.0)
+        assert note is not None
+        assert note.relevance == 0.0
+
+
+# ---------------------------------------------------------------------------
+# List notes
+# ---------------------------------------------------------------------------
+
+
+class TestListNotes:
+    async def test_empty(self, store):
+        assert await store.list_notes() == []
+
+    async def test_returns_all(self, populated_store):
+        notes = await populated_store.list_notes()
+        assert len(notes) == 15
+
+    async def test_excludes_forgotten(self, store):
+        await store.upsert_note("Active", "Content")
+        await store.upsert_note("Forgotten", "Content")
+        await store.set_relevance("Forgotten", 0.0)
+
+        notes = await store.list_notes(include_forgotten=False)
+        assert len(notes) == 1
+        assert notes[0].title == "Active"
+
+    async def test_includes_forgotten(self, store):
+        await store.upsert_note("Active", "Content")
+        await store.upsert_note("Forgotten", "Content")
+        await store.set_relevance("Forgotten", 0.0)
+
+        notes = await store.list_notes(include_forgotten=True)
+        assert len(notes) == 2
+
+    async def test_pagination(self, populated_store):
+        page1 = await populated_store.list_notes(limit=5, offset=0)
+        page2 = await populated_store.list_notes(limit=5, offset=5)
+        assert len(page1) == 5
+        assert len(page2) == 5
+        ids1 = {n.note_id for n in page1}
+        ids2 = {n.note_id for n in page2}
+        assert ids1.isdisjoint(ids2)
+
+
+# ---------------------------------------------------------------------------
+# Search notes
+# ---------------------------------------------------------------------------
+
+
+class TestSearchNotes:
+    async def test_basic_search(self, populated_store):
+        fts = build_fts_query("asyncio")
+        results = await populated_store.search_notes(fts)
+        assert len(results) > 0
+        titles = [r.note.title for r in results]
+        assert any("asyncio" in t.lower() for t in titles)
+
+    async def test_title_ranks_higher(self, populated_store):
+        fts = build_fts_query("SQLite FTS5")
+        results = await populated_store.search_notes(fts)
+        assert len(results) > 0
+        assert "SQLite FTS5" in results[0].note.title
+
+    async def test_no_results(self, populated_store):
+        fts = build_fts_query("xyznonexistentxyz")
+        results = await populated_store.search_notes(fts)
+        assert len(results) == 0
+
+    async def test_excludes_forgotten(self, store):
+        await store.upsert_note("Findable", "searchterm content")
+        await store.upsert_note("Hidden", "searchterm content")
+        await store.set_relevance("Hidden", 0.0)
+
+        fts = build_fts_query("searchterm")
+        results = await store.search_notes(fts)
+        assert len(results) == 1
+        assert results[0].note.title == "Findable"
+
+    async def test_relevance_weighting(self, store):
+        await store.upsert_note("Full weight", "searchterm content")
+        await store.upsert_note("Half weight", "searchterm content")
+        await store.set_relevance("Half weight", 0.5)
+
+        fts = build_fts_query("searchterm")
+        results = await store.search_notes(fts)
+        assert len(results) == 2
+        # Full weight should score higher
+        assert results[0].note.title == "Full weight"
+
+    async def test_score_positive(self, populated_store):
+        fts = build_fts_query("python")
+        results = await populated_store.search_notes(fts)
+        for r in results:
+            assert r.score > 0
+
+    async def test_malformed_query_returns_empty(self, store):
+        results = await store.search_notes('invalid "query')
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# Similar titles
+# ---------------------------------------------------------------------------
+
+
+class TestFindSimilarTitles:
+    async def test_finds_similar(self, populated_store):
+        similar = await populated_store.find_similar_titles("Python programming")
+        assert len(similar) > 0
+
+    async def test_empty_title(self, populated_store):
+        similar = await populated_store.find_similar_titles("")
+        assert similar == []
+
+
+# ---------------------------------------------------------------------------
+# Counts & analytics
+# ---------------------------------------------------------------------------
+
+
+class TestCounts:
+    async def test_count_notes_empty(self, store):
+        active, forgotten = await store.count_notes()
+        assert active == 0
+        assert forgotten == 0
+
+    async def test_count_notes(self, store):
+        await store.upsert_note("Active", "Content")
+        await store.upsert_note("Forgotten", "Content")
+        await store.set_relevance("Forgotten", 0.0)
+
+        active, forgotten = await store.count_notes()
+        assert active == 1
+        assert forgotten == 1
+
+    async def test_tag_counts(self, populated_store):
+        tags = await populated_store.tag_counts()
+        assert "python" in tags
+        assert tags["python"] >= 2
+
+    async def test_category_counts(self, populated_store):
+        cats = await populated_store.category_counts()
+        assert "engineering" in cats
+        assert cats["engineering"] >= 5
+
+    async def test_stale_notes_fresh(self, populated_store):
+        stale = await populated_store.stale_notes(days=30)
+        assert len(stale) == 0
+
+    async def test_recent_notes(self, populated_store):
+        recent = await populated_store.recent_notes(days=7)
+        assert len(recent) > 0
+
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
+
+
+class TestSessions:
+    async def _make_session(self, **overrides) -> Session:
+        defaults = {
+            "session_id": "test-session-123",
+            "slug": "test-slug",
+            "project_path": "/test/project",
+            "git_branch": "main",
+            "model": "claude-opus-4-6",
+            "started_at": utcnow(),
+            "ended_at": utcnow(),
+            "duration_s": 300,
+            "user_turn_count": 5,
+            "assistant_turn_count": 5,
+            "summary": "Test session summary",
+            "user_text": "User asked about testing",
+            "assistant_text": "Agent explained testing",
+            "tools_used": ["Read", "Edit"],
+            "files_edited": ["/test/file.py"],
+            "source_mtime": 1234567890.0,
+            "source_size": 1024,
+        }
+        defaults.update(overrides)
+        return Session(**defaults)
+
+    async def test_upsert_and_get(self, store):
+        session = await self._make_session()
+        await store.upsert_session(session)
+
+        found = await store.get_session("test-session-123")
+        assert found is not None
+        assert found.session_id == "test-session-123"
+        assert found.slug == "test-slug"
+
+    async def test_get_by_prefix(self, store):
+        session = await self._make_session()
+        await store.upsert_session(session)
+
+        found = await store.get_session("test-ses")
+        assert found is not None
+        assert found.session_id == "test-session-123"
+
+    async def test_get_not_found(self, store):
+        assert await store.get_session("nonexistent") is None
+
+    async def test_list_sessions(self, store):
+        s1 = await self._make_session(session_id="s1")
+        s2 = await self._make_session(session_id="s2")
+        await store.upsert_session(s1)
+        await store.upsert_session(s2)
+
+        sessions = await store.list_sessions()
+        assert len(sessions) == 2
+
+    async def test_search_sessions(self, store):
+        session = await self._make_session(
+            user_text="How do I configure FTS5 search in SQLite?",
+            summary="FTS5 configuration question",
+        )
+        await store.upsert_session(session)
+
+        fts = build_fts_query("FTS5 search")
+        results = await store.search_sessions(fts)
+        assert len(results) > 0
+
+    async def test_count_sessions(self, store):
+        assert await store.count_sessions() == 0
+
+        session = await self._make_session()
+        await store.upsert_session(session)
+        assert await store.count_sessions() == 1
+
+    async def test_needs_reindex(self, store):
+        assert await store.needs_reindex("new-id", 123.0, 456) is True
+
+        session = await self._make_session(source_mtime=123.0, source_size=456)
+        await store.upsert_session(session)
+        assert await store.needs_reindex("test-session-123", 123.0, 456) is False
+        assert await store.needs_reindex("test-session-123", 999.0, 456) is True
+
+    async def test_upsert_replaces(self, store):
+        s1 = await self._make_session(summary="Original")
+        await store.upsert_session(s1)
+
+        s2 = await self._make_session(summary="Updated")
+        await store.upsert_session(s2)
+
+        found = await store.get_session("test-session-123")
+        assert found is not None
+        assert found.summary == "Updated"
+        assert await store.count_sessions() == 1
+
+    async def test_ambiguous_prefix_raises(self, store):
+        import pytest
+
+        s1 = await self._make_session(session_id="aaaa-1111-0000-0000-000000000001")
+        s2 = await self._make_session(session_id="aaaa-2222-0000-0000-000000000002")
+        await store.upsert_session(s1)
+        await store.upsert_session(s2)
+
+        with pytest.raises(ValueError, match="Ambiguous"):
+            await store.get_session("aaaa")
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeCases:
+    async def test_unicode_content(self, store):
+        note, _ = await store.upsert_note(
+            "Unicode test: caf\u00e9 r\u00e9sum\u00e9",
+            "Content with \u65e5\u672c\u8a9e and \u00dc",
+            tags=["\u00fcber", "caf\u00e9"],
+        )
+        found = await store.get_note(note.note_id)
+        assert found is not None
+        assert "caf\u00e9" in found.title
+
+    async def test_long_content(self, store):
+        long_text = "x" * 100_000
+        note, _ = await store.upsert_note("Long note", long_text)
+        found = await store.get_note(note.note_id)
+        assert found is not None
+        assert len(found.content) == 100_000
+
+    async def test_special_chars_in_search(self, populated_store):
+        fts = build_fts_query("test (with) [brackets]")
+        if fts:
+            results = await populated_store.search_notes(fts)
+            assert isinstance(results, list)
+
+    async def test_concurrent_creates(self, store):
+        async def create_one(i: int):
+            return await store.upsert_note(f"Concurrent {i}", f"Content {i}")
+
+        results = await asyncio.gather(*[create_one(i) for i in range(10)])
+        assert len(results) == 10
+        ids = {note.note_id for note, _ in results}
+        assert len(ids) == 10
+
+    async def test_context_manager(self, tmp_db_path):
+        async with SQLiteStore(str(tmp_db_path)) as s:
+            note, _ = await s.upsert_note("Context manager test", "Content")
+            assert note.note_id

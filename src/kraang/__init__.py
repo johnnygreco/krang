@@ -8,27 +8,21 @@ except ImportError:
     __version__ = "0.0.0"
 
 from kraang.models import (
-    DailyDigest,
     Note,
-    NoteCreate,
-    NoteStatus,
-    NoteUpdate,
-    SearchQuery,
-    SearchResponse,
-    SearchResult,
-    StaleItem,
+    NoteSearchResult,
+    SearchScope,
+    Session,
+    SessionSearchResult,
+    TranscriptTurn,
 )
-from kraang.store import NoteStore
+from kraang.store import SQLiteStore
 
 __all__ = [
-    "DailyDigest",
     "Note",
-    "NoteCreate",
-    "NoteStatus",
-    "NoteStore",
-    "NoteUpdate",
-    "SearchQuery",
-    "SearchResponse",
-    "SearchResult",
-    "StaleItem",
+    "NoteSearchResult",
+    "SQLiteStore",
+    "SearchScope",
+    "Session",
+    "SessionSearchResult",
+    "TranscriptTurn",
 ]

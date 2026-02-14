@@ -22,15 +22,16 @@ def new_id() -> str:
 # ---------------------------------------------------------------------------
 
 
-class NoteStatus(str, Enum):
-    """Lifecycle status of a note."""
+class SearchScope(str, Enum):
+    """What to search in a recall query."""
 
-    ACTIVE = "active"
-    ARCHIVED = "archived"
+    ALL = "all"
+    NOTES = "notes"
+    SESSIONS = "sessions"
 
 
 # ---------------------------------------------------------------------------
-# Core note models
+# Note model
 # ---------------------------------------------------------------------------
 
 
@@ -39,87 +40,73 @@ class Note(BaseModel):
 
     note_id: str = Field(default_factory=new_id)
     title: str
+    title_normalized: str = ""
     content: str
     tags: list[str] = Field(default_factory=list)
     category: str = ""
-    status: NoteStatus = NoteStatus.ACTIVE
+    relevance: float = Field(default=1.0, ge=0.0, le=1.0)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
-    metadata: dict[str, str] = Field(default_factory=dict)
-
-
-class NoteCreate(BaseModel):
-    """Input schema for creating a new note."""
-
-    title: str = Field(..., min_length=1, max_length=500)
-    content: str = Field(..., min_length=1, max_length=200_000)
-    tags: list[str] = Field(default_factory=list)
-    category: str = ""
-    metadata: dict[str, str] = Field(default_factory=dict)
-
-
-class NoteUpdate(BaseModel):
-    """Input schema for partially updating a note. Only provided fields are changed."""
-
-    title: str | None = Field(default=None, min_length=1, max_length=500)
-    content: str | None = Field(default=None, min_length=1, max_length=200_000)
-    tags: list[str] | None = None
-    category: str | None = None
-    status: NoteStatus | None = None
-    metadata: dict[str, str] | None = None
 
 
 # ---------------------------------------------------------------------------
-# Search models
+# Session model
 # ---------------------------------------------------------------------------
 
 
-class SearchQuery(BaseModel):
-    """Parameters for a full-text + metadata search."""
+class Session(BaseModel):
+    """An indexed conversation session from Claude Code."""
 
-    query: str = Field(..., min_length=1)
-    tags: list[str] = Field(default_factory=list)
-    category: str | None = None
-    status: NoteStatus | None = None
-    date_from: datetime | None = None
-    date_to: datetime | None = None
-    limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
+    session_id: str
+    slug: str = ""
+    project_path: str
+    git_branch: str = ""
+    model: str = ""
+    started_at: datetime
+    ended_at: datetime
+    duration_s: int = 0
+    user_turn_count: int = 0
+    assistant_turn_count: int = 0
+    summary: str = ""
+    user_text: str = ""
+    assistant_text: str = ""
+    tools_used: list[str] = Field(default_factory=list)
+    files_edited: list[str] = Field(default_factory=list)
+    source_mtime: float = 0.0
+    source_size: int = 0
+    indexed_at: datetime = Field(default_factory=utcnow)
 
 
-class SearchResult(BaseModel):
-    """A single search hit with relevance score."""
+# ---------------------------------------------------------------------------
+# Search results
+# ---------------------------------------------------------------------------
+
+
+class NoteSearchResult(BaseModel):
+    """A note search hit with relevance score."""
 
     note: Note
     score: float
     snippet: str = ""
 
 
-class SearchResponse(BaseModel):
-    """Paginated search results."""
+class SessionSearchResult(BaseModel):
+    """A session search hit with relevance score."""
 
-    results: list[SearchResult]
-    total: int
-    query: str
+    session: Session
+    score: float
+    snippet: str = ""
 
 
 # ---------------------------------------------------------------------------
-# Analytics / intelligence models
+# Transcript models (for read_session)
 # ---------------------------------------------------------------------------
 
 
-class StaleItem(BaseModel):
-    """A note that hasn't been updated in a while."""
+class TranscriptTurn(BaseModel):
+    """A single turn in a conversation transcript."""
 
-    note: Note
-    days_since_update: int
-
-
-class DailyDigest(BaseModel):
-    """Aggregated activity summary."""
-
-    total_notes: int
-    recent_notes: list[Note]
-    category_distribution: dict[str, int]
-    tag_distribution: dict[str, int]
-    stale_count: int
+    role: str  # "User" or "Agent"
+    timestamp: str = ""
+    text: str = ""
+    tool_calls: list[str] = Field(default_factory=list)

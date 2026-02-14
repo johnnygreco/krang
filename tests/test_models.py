@@ -2,57 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
-
 from kraang.models import (
     Note,
-    NoteCreate,
-    NoteStatus,
-    NoteUpdate,
-    SearchQuery,
+    NoteSearchResult,
+    SearchScope,
+    Session,
+    SessionSearchResult,
+    TranscriptTurn,
+    utcnow,
 )
-
-# ---------------------------------------------------------------------------
-# NoteCreate
-# ---------------------------------------------------------------------------
-
-
-class TestNoteCreate:
-    def test_valid(self):
-        nc = NoteCreate(title="Hello", content="World", tags=["a"], category="cat")
-        assert nc.title == "Hello"
-        assert nc.content == "World"
-        assert nc.tags == ["a"]
-        assert nc.category == "cat"
-        assert nc.metadata == {}
-
-    def test_empty_title_rejected(self):
-        with pytest.raises(ValidationError):
-            NoteCreate(title="", content="body")
-
-    def test_empty_content_rejected(self):
-        with pytest.raises(ValidationError):
-            NoteCreate(title="ok", content="")
-
-    def test_title_max_length(self):
-        with pytest.raises(ValidationError):
-            NoteCreate(title="x" * 501, content="body")
-
-    def test_content_max_length_rejected(self):
-        with pytest.raises(ValidationError):
-            NoteCreate(title="X", content="x" * 200_001)
-
-    def test_content_at_max_length(self):
-        nc = NoteCreate(title="X", content="x" * 200_000)
-        assert len(nc.content) == 200_000
-
-    def test_defaults(self):
-        nc = NoteCreate(title="T", content="C")
-        assert nc.tags == []
-        assert nc.category == ""
-        assert nc.metadata == {}
-
 
 # ---------------------------------------------------------------------------
 # Note
@@ -62,97 +20,87 @@ class TestNoteCreate:
 class TestNote:
     def test_defaults(self):
         note = Note(title="T", content="C")
-        assert note.status == NoteStatus.ACTIVE
+        assert note.relevance == 1.0
         assert note.tags == []
         assert note.category == ""
-        assert note.metadata == {}
-        assert note.note_id  # auto-generated, non-empty
+        assert note.note_id  # auto-generated
         assert note.created_at is not None
-        assert note.updated_at is not None
 
     def test_id_auto_generated(self):
         n1 = Note(title="A", content="B")
         n2 = Note(title="A", content="B")
         assert n1.note_id != n2.note_id
 
-
-# ---------------------------------------------------------------------------
-# NoteUpdate
-# ---------------------------------------------------------------------------
-
-
-class TestNoteUpdate:
-    def test_partial(self):
-        update = NoteUpdate(title="New Title")
-        assert update.title == "New Title"
-        assert update.content is None
-        assert update.tags is None
-        assert update.category is None
-        assert update.status is None
-        assert update.metadata is None
-
-    def test_all_none_by_default(self):
-        update = NoteUpdate()
-        assert update.title is None
-        assert update.content is None
-
-    def test_empty_title_rejected(self):
-        with pytest.raises(ValidationError):
-            NoteUpdate(title="")
-
-    def test_status_field(self):
-        update = NoteUpdate(status=NoteStatus.ARCHIVED)
-        assert update.status == NoteStatus.ARCHIVED
+    def test_relevance_bounds(self):
+        note = Note(title="T", content="C", relevance=0.5)
+        assert note.relevance == 0.5
 
 
 # ---------------------------------------------------------------------------
-# SearchQuery
+# Session
 # ---------------------------------------------------------------------------
 
 
-class TestSearchQuery:
-    def test_defaults(self):
-        sq = SearchQuery(query="hello")
-        assert sq.limit == 20
-        assert sq.offset == 0
-        assert sq.tags == []
-        assert sq.category is None
-        assert sq.status is None
-
-    def test_limit_lower_bound(self):
-        with pytest.raises(ValidationError):
-            SearchQuery(query="test", limit=0)
-
-    def test_limit_upper_bound(self):
-        with pytest.raises(ValidationError):
-            SearchQuery(query="test", limit=101)
-
-    def test_limit_valid_boundaries(self):
-        sq1 = SearchQuery(query="test", limit=1)
-        assert sq1.limit == 1
-        sq100 = SearchQuery(query="test", limit=100)
-        assert sq100.limit == 100
-
-    def test_offset_non_negative(self):
-        with pytest.raises(ValidationError):
-            SearchQuery(query="test", offset=-1)
-
-    def test_empty_query_rejected(self):
-        with pytest.raises(ValidationError):
-            SearchQuery(query="")
+class TestSession:
+    def test_basic(self):
+        now = utcnow()
+        session = Session(
+            session_id="abc",
+            project_path="/test",
+            started_at=now,
+            ended_at=now,
+            source_mtime=123.0,
+            source_size=456,
+        )
+        assert session.session_id == "abc"
+        assert session.slug == ""
+        assert session.duration_s == 0
 
 
 # ---------------------------------------------------------------------------
-# NoteStatus
+# Search results
 # ---------------------------------------------------------------------------
 
 
-class TestNoteStatus:
+class TestSearchResults:
+    def test_note_search_result(self):
+        note = Note(title="T", content="C")
+        result = NoteSearchResult(note=note, score=5.0, snippet="test...")
+        assert result.score == 5.0
+
+    def test_session_search_result(self):
+        now = utcnow()
+        session = Session(
+            session_id="abc",
+            project_path="/test",
+            started_at=now,
+            ended_at=now,
+            source_mtime=0.0,
+            source_size=0,
+        )
+        result = SessionSearchResult(session=session, score=3.0)
+        assert result.score == 3.0
+
+
+# ---------------------------------------------------------------------------
+# SearchScope
+# ---------------------------------------------------------------------------
+
+
+class TestSearchScope:
     def test_values(self):
-        assert NoteStatus.ACTIVE == "active"
-        assert NoteStatus.ARCHIVED == "archived"
+        assert SearchScope.ALL == "all"
+        assert SearchScope.NOTES == "notes"
+        assert SearchScope.SESSIONS == "sessions"
 
-    def test_string_enum(self):
-        assert isinstance(NoteStatus.ACTIVE, str)
-        assert NoteStatus.ACTIVE.value == "active"
-        assert NoteStatus.ARCHIVED.value == "archived"
+
+# ---------------------------------------------------------------------------
+# TranscriptTurn
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptTurn:
+    def test_basic(self):
+        turn = TranscriptTurn(role="User", text="Hello")
+        assert turn.role == "User"
+        assert turn.tool_calls == []
